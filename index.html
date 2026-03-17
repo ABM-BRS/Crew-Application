@@ -1,0 +1,149 @@
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import {
+getDatabase,
+ref,
+push,
+update,
+remove,
+onValue
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
+  authDomain: "crew-app-e1315.firebaseapp.com",
+  projectId: "crew-app-e1315",
+  storageBucket: "crew-app-e1315.firebasestorage.app",
+  messagingSenderId: "320647227664",
+  appId: "1:320647227664:web:8de65c96c509d819a7dd95",
+  databaseURL: "https://crew-app-93726-default-rtdb.europe-west1.firebasedatabase.app/"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const pickupsRef = ref(db,"pickups1");
+
+
+/* SHOW / HIDE STAND */
+
+window.toggleStand = function(){
+
+const type=document.getElementById("type").value;
+const stand=document.getElementById("stand");
+
+stand.style.display = type==="Inbound" ? "block" : "none";
+
+}
+
+
+/* CONFIRM PICKUP */
+
+window.confirmPickup = async function(){
+
+const flight=document.getElementById("flight").value;
+const type=document.getElementById("type").value;
+const stand=document.getElementById("stand").value;
+const time=document.getElementById("time").value;
+const crew=document.getElementById("crew").value;
+
+if(!flight || !time || !crew){
+alert("Enter flight, time and crew");
+return;
+}
+
+if(type==="Inbound" && !stand){
+alert("Enter stand for inbound");
+return;
+}
+
+await push(pickupsRef,{
+flightNumber:flight,
+type:type,
+stand:stand,
+pickupTime:new Date(time).toISOString(),
+crew:crew,
+status:"Pending",
+createdTime:new Date().toISOString(),
+completedTime:null,
+durationMinutes:null
+});
+
+document.getElementById("flight").value="";
+document.getElementById("stand").value="";
+document.getElementById("time").value="";
+document.getElementById("crew").value="";
+
+}
+
+/* COMPLETE PICKUP */
+
+window.complete = async function(id){
+
+const pickupRef = ref(db,"pickups1/"+id);
+
+await update(pickupRef,{
+status:"Completed",
+completedTime:new Date().toISOString()
+});
+
+}
+
+
+/* DELETE PICKUP */
+
+window.removePickup = async function(id){
+
+const pickupRef = ref(db,"pickups1/"+id);
+await remove(pickupRef);
+
+}
+
+
+/* LIVE DASHBOARD */
+
+const table=document.getElementById("table");
+
+onValue(pickupsRef,(snapshot)=>{
+
+table.innerHTML="";
+
+snapshot.forEach((child)=>{
+
+const p=child.val();
+const id=child.key;
+
+const row=document.createElement("tr");
+
+row.innerHTML=`
+
+<td>${p.flightNumber}</td>
+<td>${p.type}</td>
+<td>${p.stand||"-"}</td>
+<td>${new Date(p.pickupTime).toLocaleString()}</td>
+<td>${p.crew}</td>
+<td>${p.status}</td>
+
+<td>
+
+${p.status==="Pending"
+? `<button onclick="complete('${id}')">Complete</button>`
+:"-"}
+
+<button class="delete" onclick="removePickup('${id}')">Delete</button>
+
+</td>
+
+`;
+
+table.appendChild(row);
+
+});
+
+});
+
+</script>
+</body>
+</html>
