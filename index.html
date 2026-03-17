@@ -1,16 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Airport Pickup Dispatch</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body{font-family:Arial;background:#f4f6f8;padding:20px;max-width:1000px;margin:auto;}
+    .card{background:white;padding:20px;margin-bottom:25px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);}
+    input,select,button{width:100%;padding:10px;margin:6px 0;}
+    button{background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;}
+    button:hover{background:#0056b3;}
+    .delete{background:#e53935;}
+    table{width:100%;border-collapse:collapse;}
+    th,td{border:1px solid #ddd;padding:10px;text-align:center;}
+  </style>
+</head>
+<body>
+
+<h1>Airport Pickup Dispatch</h1>
+
+<div class="card">
+  <h2>Confirm Pickup</h2>
+  <input id="flight" placeholder="Flight Number">
+  <select id="type" onchange="toggleStand()">
+    <option value="Inbound">Inbound</option>
+    <option value="Outbound">Outbound</option>
+  </select>
+  <input id="stand" placeholder="Stand / Pickup Location">
+  <input type="datetime-local" id="time">
+  <select id="crew">
+    <option value="">Crew Number</option>
+    <option>1</option>
+    <option>2</option>
+    <option>3</option>
+    <option>4</option>
+    <option>5</option>
+    <option>6</option>
+  </select>
+  <button onclick="confirmPickup()">Confirm Pickup</button>
+</div>
+
+<div class="card">
+  <h2>Dispatch Dashboard</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Flight</th>
+        <th>Type</th>
+        <th>Stand</th>
+        <th>Time</th>
+        <th>Crew</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="table"></tbody>
+  </table>
+</div>
+
 <script type="module">
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-import {
-getDatabase,
-ref,
-push,
-update,
-remove,
-onValue
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
+// 🔹 Your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
   authDomain: "crew-app-e1315.firebaseapp.com",
@@ -23,127 +74,92 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const pickupsRef = ref(db, "pickups1");
 
-const pickupsRef = ref(db,"pickups1");
-push(pickupsRef,{test:"Firebase working"});
+// 🔹 Show/hide stand input
+window.toggleStand = function() {
+  const type = document.getElementById("type").value;
+  const stand = document.getElementById("stand");
+  stand.style.display = type === "Inbound" ? "block" : "none";
+};
+toggleStand(); // initial call
 
-/* SHOW / HIDE STAND */
+// 🔹 Confirm Pickup
+window.confirmPickup = async function() {
+  const flight = document.getElementById("flight").value.trim();
+  const type = document.getElementById("type").value;
+  const stand = document.getElementById("stand").value.trim();
+  const time = document.getElementById("time").value;
+  const crew = document.getElementById("crew").value;
 
-window.toggleStand = function(){
+  if(!flight || !time || !crew){
+    alert("Enter flight, time, and crew");
+    return;
+  }
+  if(type === "Inbound" && !stand){
+    alert("Enter stand for inbound");
+    return;
+  }
 
-const type=document.getElementById("type").value;
-const stand=document.getElementById("stand");
+  try {
+    await push(pickupsRef, {
+      flightNumber: flight,
+      type: type,
+      stand: stand,
+      pickupTime: new Date(time).toISOString(),
+      crew: crew,
+      status: "Pending",
+      createdTime: new Date().toISOString(),
+      completedTime: null,
+      durationMinutes: null
+    });
+    document.getElementById("flight").value = "";
+    document.getElementById("stand").value = "";
+    document.getElementById("time").value = "";
+    document.getElementById("crew").value = "";
+  } catch (err) {
+    console.error(err);
+    alert("Error saving pickup");
+  }
+};
 
-stand.style.display = type==="Inbound" ? "block" : "none";
+// 🔹 Complete Pickup
+window.complete = async function(id) {
+  const pickupRef = ref(db, "pickups1/" + id);
+  const completedTime = new Date().toISOString();
+  await update(pickupRef, { status: "Completed", completedTime });
+};
 
-}
+// 🔹 Delete Pickup
+window.removePickup = async function(id) {
+  const pickupRef = ref(db, "pickups1/" + id);
+  await remove(pickupRef);
+};
 
-
-/* CONFIRM PICKUP */
-
-window.confirmPickup = async function(){
-
-const flight=document.getElementById("flight").value;
-const type=document.getElementById("type").value;
-const stand=document.getElementById("stand").value;
-const time=document.getElementById("time").value;
-const crew=document.getElementById("crew").value;
-
-if(!flight || !time || !crew){
-alert("Enter flight, time and crew");
-return;
-}
-
-if(type==="Inbound" && !stand){
-alert("Enter stand for inbound");
-return;
-}
-
-await push(pickupsRef,{
-flightNumber:flight,
-type:type,
-stand:stand,
-pickupTime:new Date(time).toISOString(),
-crew:crew,
-status:"Pending",
-createdTime:new Date().toISOString(),
-completedTime:null,
-durationMinutes:null
+// 🔹 Live Dashboard
+const table = document.getElementById("table");
+onValue(pickupsRef, (snapshot) => {
+  table.innerHTML = "";
+  snapshot.forEach((child) => {
+    const p = child.val();
+    const id = child.key;
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${p.flightNumber}</td>
+      <td>${p.type}</td>
+      <td>${p.stand || "-"}</td>
+      <td>${new Date(p.pickupTime).toLocaleString()}</td>
+      <td>${p.crew}</td>
+      <td>${p.status}</td>
+      <td>
+        ${p.status === "Pending" ? `<button onclick="complete('${id}')">Complete</button>` : "-"}
+        <button class="delete" onclick="removePickup('${id}')">Delete</button>
+      </td>
+    `;
+    table.appendChild(row);
+  });
 });
-
-document.getElementById("flight").value="";
-document.getElementById("stand").value="";
-document.getElementById("time").value="";
-document.getElementById("crew").value="";
-
-}
-
-/* COMPLETE PICKUP */
-
-window.complete = async function(id){
-
-const pickupRef = ref(db,"pickups1/"+id);
-
-await update(pickupRef,{
-status:"Completed",
-completedTime:new Date().toISOString()
-});
-
-}
-
-
-/* DELETE PICKUP */
-
-window.removePickup = async function(id){
-
-const pickupRef = ref(db,"pickups1/"+id);
-await remove(pickupRef);
-
-}
-
-
-/* LIVE DASHBOARD */
-
-const table=document.getElementById("table");
-
-onValue(pickupsRef,(snapshot)=>{
-
-table.innerHTML="";
-
-snapshot.forEach((child)=>{
-
-const p=child.val();
-const id=child.key;
-
-const row=document.createElement("tr");
-
-row.innerHTML=`
-
-<td>${p.flightNumber}</td>
-<td>${p.type}</td>
-<td>${p.stand||"-"}</td>
-<td>${new Date(p.pickupTime).toLocaleString()}</td>
-<td>${p.crew}</td>
-<td>${p.status}</td>
-
-<td>
-
-${p.status==="Pending"
-? `<button onclick="complete('${id}')">Complete</button>`
-:"-"}
-
-<button class="delete" onclick="removePickup('${id}')">Delete</button>
-
-</td>
-
-`;
-
-table.appendChild(row);
-
-});
-
-});
-
 </script>
+
 </body>
 </html>
