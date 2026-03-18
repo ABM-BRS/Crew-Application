@@ -10,111 +10,28 @@
     <link rel="apple-touch-icon" href="favicon.png">
 
     <style>
-        body {
-            font-family: Arial;
-            background: #f4f6f8;
-            padding: 15px;
-            max-width: 900px;
-            margin: auto;
-        }
-
-        h1 {
-            text-align: center;
-        }
-
-        .card {
-            background: white;
-            padding: 18px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        input, select, button {
-            width: 100%;
-            padding: 12px;
-            margin: 6px 0;
-            font-size: 16px;
-        }
-
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #0056b3;
-        }
-
-        .complete {
-            background: #2e7d32;
-        }
-
-        .delete {
-            background: #e53935;
-        }
-
-        .pickup-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-            position: relative;
-        }
-
-        .pickup-header {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
-
-        .status {
-            font-weight: bold;
-            margin-top: 5px;
-        }
-
-        .pending {
-            color: #f57c00;
-        }
-
-        .completed {
-            color: #2e7d32;
-        }
-
-        .actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .actions button {
-            flex: 1;
-        }
-
-        .countdown {
-            font-weight: bold;
-            margin-top: 5px;
-        }
-
-        /* Highlight soon pickups (<30 min) */
-        .urgent {
-            border-left: 5px solid #f57c00;
-        }
-
-        /* Highlight pickups within 10 minutes */
-        .imminent {
-            border-left: 5px solid #e53935;
-        }
-
-        /* Highlight late pickups */
-        .late {
-            border-left: 5px solid #d32f2f;
-            background: #ffe6e6;
-        }
+        body { font-family: Arial; background: #f4f6f8; padding: 15px; max-width: 900px; margin: auto; }
+        h1 { text-align: center; }
+        .card { background: white; padding: 18px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 12px; margin: 6px 0; font-size: 16px; }
+        button { background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .complete { background: #2e7d32; }
+        .delete { background: #e53935; }
+        .pickup-card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow:0 2px 6px rgba(0,0,0,0.1); position: relative; transition: all 0.3s ease; }
+        .pickup-header { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+        .status { font-weight: bold; margin-top: 5px; }
+        .pending { color: #f57c00; }
+        .completed { color: #2e7d32; }
+        .actions { display:flex; gap:10px; margin-top:10px; }
+        .actions button { flex:1; }
+        .countdown { font-weight: bold; margin-top:5px; }
+        .urgent { border-left:5px solid #f57c00; }
+        .imminent { border-left:5px solid #e53935; }
+        .late { border-left:5px solid #d32f2f; background: #ffe6e6; }
+        /* Blinking effect for late pickups */
+        @keyframes blink { 0% { background-color: #ffe6e6; } 50% { background-color: #ffcccc; } 100% { background-color: #ffe6e6; } }
+        .late.blink { animation: blink 1s infinite; }
     </style>
 </head>
 
@@ -145,8 +62,13 @@
 
 <div class="card">
     <h2>Active Pickups</h2>
+    <!-- Reset Alerts Button -->
+    <button style="background:#ff9800; margin-bottom:10px;" onclick="resetAlerts()">Reset Alerts</button>
     <div id="dashboard"></div>
 </div>
+
+<!-- Audio alert for late pickups -->
+<audio id="alertSound" src="alert.mp3" preload="auto"></audio>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -166,10 +88,10 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
+const alertSound = document.getElementById("alertSound");
 
 window.toggleStand = function () {
-    const type = document.getElementById("type").value;
-    document.getElementById("stand").style.display = type === "Inbound" ? "block" : "none";
+    document.getElementById("stand").style.display = document.getElementById("type").value === "Inbound" ? "block" : "none";
 };
 toggleStand();
 
@@ -198,34 +120,43 @@ window.confirmPickup = async function () {
     document.getElementById("stand").value = "";
     document.getElementById("time").value = "";
     document.getElementById("crew").value = "";
-}
+};
 
 window.complete = async function (id) {
     await update(ref(db, "pickups1/" + id), { status: "Completed", completedTime: new Date().toISOString() });
-}
+};
 
 window.removePickup = async function (id) {
     await remove(ref(db, "pickups1/" + id));
-}
+};
+
+// Reset Alerts Function
+window.resetAlerts = function() {
+    alertSound.pause();
+    alertSound.currentTime = 0;
+    const cards = Array.from(document.getElementsByClassName("pickup-card"));
+    cards.forEach(card => {
+        card.classList.remove("blink");
+        card.dataset.alerted = "false";
+    });
+};
 
 function renderDashboard(pickups) {
     dashboard.innerHTML = "";
-
     const now = new Date();
 
-    // Add computed properties for sorting
     pickups.forEach(p => {
         p.pickupDate = new Date(p.pickupTime);
         const diffMinutes = Math.floor((p.pickupDate - now)/60000);
         p.diffMinutes = diffMinutes;
         if (p.status !== "Pending") p.priority = 4;
-        else if (diffMinutes < 0) p.priority = 0; // late
-        else if (diffMinutes <= 10) p.priority = 1; // imminent
-        else if (diffMinutes <= 30) p.priority = 2; // urgent
-        else p.priority = 3; // normal pending
+        else if (diffMinutes < 0) p.priority = 0;
+        else if (diffMinutes <= 10) p.priority = 1;
+        else if (diffMinutes <= 30) p.priority = 2;
+        else p.priority = 3;
+        p.alerted = false;
     });
 
-    // Sort by priority then pickup time
     pickups.sort((a,b) => a.priority - b.priority || a.pickupDate - b.pickupDate);
 
     pickups.forEach(p => {
@@ -233,6 +164,7 @@ function renderDashboard(pickups) {
         card.className = "pickup-card";
         card.dataset.pickupTime = p.pickupTime;
         card.dataset.status = p.status;
+        card.dataset.alerted = "false";
 
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
@@ -269,7 +201,7 @@ function updateCountdowns() {
 
         if(status !== "Pending") {
             countdownEl.textContent = "";
-            card.classList.remove("imminent","urgent","late");
+            card.classList.remove("imminent","urgent","late","blink");
             return;
         }
 
@@ -278,19 +210,25 @@ function updateCountdowns() {
         if(diffSeconds < 0) {
             countdownEl.textContent = "Late!";
             card.classList.remove("imminent","urgent");
-            card.classList.add("late");
+            card.classList.add("late","blink");
+
+            if(card.dataset.alerted === "false") {
+                alertSound.play();
+                card.dataset.alerted = "true";
+            }
+
         } else {
             const minutes = Math.floor(diffSeconds/60);
             const seconds = diffSeconds % 60;
             countdownEl.textContent = `Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
-            card.classList.remove("imminent","urgent","late");
+            card.classList.remove("imminent","urgent","late","blink");
             if(minutes <= 10) card.classList.add("imminent");
             else if(minutes <= 30) card.classList.add("urgent");
+            card.dataset.alerted = "false";
         }
     });
 }
 
-// Live countdown update every second
 setInterval(updateCountdowns, 1000);
 </script>
 
