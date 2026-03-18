@@ -10,26 +10,25 @@ body{
 font-family:Arial;
 background:#f4f6f8;
 padding:15px;
-max-width:1000px;
+max-width:900px;
 margin:auto;
 }
 
 h1{
 text-align:center;
-margin-bottom:20px;
 }
 
 .card{
 background:white;
-padding:20px;
-margin-bottom:25px;
+padding:18px;
+margin-bottom:20px;
 border-radius:8px;
 box-shadow:0 2px 6px rgba(0,0,0,0.1);
 }
 
 input,select,button{
 width:100%;
-padding:10px;
+padding:12px;
 margin:6px 0;
 font-size:16px;
 }
@@ -38,7 +37,7 @@ button{
 background:#007bff;
 color:white;
 border:none;
-border-radius:4px;
+border-radius:6px;
 cursor:pointer;
 }
 
@@ -46,67 +45,49 @@ button:hover{
 background:#0056b3;
 }
 
-.delete{
-background:#e53935;
-}
-
 .complete{
 background:#2e7d32;
 }
 
-.table-container{
-width:100%;
-overflow-x:auto;
+.delete{
+background:#e53935;
 }
 
-table{
-width:100%;
-min-width:700px;
-border-collapse:collapse;
-}
-
-th,td{
-border:1px solid #ddd;
-padding:10px;
-text-align:center;
-}
-
-.status-pending{
-color:#f57c00;
-font-weight:bold;
-}
-
-.status-completed{
-color:#2e7d32;
-font-weight:bold;
-}
-
-/* Mobile optimisation */
-
-@media (max-width:600px){
-
-body{
-padding:10px;
-}
-
-.card{
+.pickup-card{
+background:white;
 padding:15px;
+border-radius:8px;
+margin-bottom:15px;
+box-shadow:0 2px 6px rgba(0,0,0,0.1);
 }
 
-th,td{
-padding:8px;
-font-size:14px;
+.pickup-header{
+font-size:20px;
+font-weight:bold;
+margin-bottom:8px;
 }
 
-button{
-padding:8px;
-font-size:14px;
+.status{
+font-weight:bold;
+margin-top:5px;
 }
 
-h1{
-font-size:22px;
+.pending{
+color:#f57c00;
 }
 
+.completed{
+color:#2e7d32;
+}
+
+.actions{
+display:flex;
+gap:10px;
+margin-top:10px;
+}
+
+.actions button{
+flex:1;
 }
 
 </style>
@@ -147,29 +128,9 @@ font-size:22px;
 
 <div class="card">
 
-<h2>Dispatch Dashboard</h2>
+<h2>Active Pickups</h2>
 
-<div class="table-container">
-
-<table>
-
-<thead>
-<tr>
-<th>Flight</th>
-<th>Type</th>
-<th>Stand</th>
-<th>Time</th>
-<th>Crew</th>
-<th>Status</th>
-<th>Action</th>
-</tr>
-</thead>
-
-<tbody id="table"></tbody>
-
-</table>
-
-</div>
+<div id="dashboard"></div>
 
 </div>
 
@@ -192,45 +153,42 @@ databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-
 const pickupsRef = ref(db,"pickups1");
 
-const table = document.getElementById("table");
+const dashboard=document.getElementById("dashboard");
 
-window.toggleStand = function(){
+window.toggleStand=function(){
 
-const type = document.getElementById("type").value;
-const stand = document.getElementById("stand");
+const type=document.getElementById("type").value;
+const stand=document.getElementById("stand");
 
-stand.style.display = type === "Inbound" ? "block" : "none";
+stand.style.display=type==="Inbound"?"block":"none";
 
 }
 
 toggleStand();
 
-window.confirmPickup = async function(){
+window.confirmPickup=async function(){
 
-const flight = document.getElementById("flight").value.trim();
-const type = document.getElementById("type").value;
-const stand = document.getElementById("stand").value.trim();
-const time = document.getElementById("time").value;
-const crew = document.getElementById("crew").value;
+const flight=document.getElementById("flight").value.trim();
+const type=document.getElementById("type").value;
+const stand=document.getElementById("stand").value.trim();
+const time=document.getElementById("time").value;
+const crew=document.getElementById("crew").value;
 
-if(!flight || !time || !crew){
+if(!flight||!time||!crew){
 
-alert("Enter flight, time, and crew");
+alert("Enter flight, time and crew");
 return;
 
 }
 
-if(type === "Inbound" && !stand){
+if(type==="Inbound"&&!stand){
 
 alert("Enter stand for inbound");
 return;
 
 }
-
-try{
 
 await push(pickupsRef,{
 
@@ -241,8 +199,7 @@ pickupTime:new Date(time).toISOString(),
 crew:crew,
 status:"Pending",
 createdTime:new Date().toISOString(),
-completedTime:null,
-durationMinutes:null
+completedTime:null
 
 });
 
@@ -251,47 +208,29 @@ document.getElementById("stand").value="";
 document.getElementById("time").value="";
 document.getElementById("crew").value="";
 
-}catch(err){
-
-console.error(err);
-alert("Error saving pickup");
-
 }
 
-}
+window.complete=async function(id){
 
-window.complete = async function(id){
-
-const pickupRef = ref(db,"pickups1/"+id);
-
-const snapshot = await get(pickupRef);
-const data = snapshot.val();
-
-const completedTime = new Date();
-const createdTime = new Date(data.createdTime);
-
-const durationMinutes = Math.round((completedTime-createdTime)/60000);
+const pickupRef=ref(db,"pickups1/"+id);
 
 await update(pickupRef,{
-
 status:"Completed",
-completedTime:completedTime.toISOString(),
-durationMinutes:durationMinutes
-
+completedTime:new Date().toISOString()
 });
 
 }
 
-window.removePickup = async function(id){
+window.removePickup=async function(id){
 
-const pickupRef = ref(db,"pickups1/"+id);
+const pickupRef=ref(db,"pickups1/"+id);
 await remove(pickupRef);
 
 }
 
 onValue(pickupsRef,(snapshot)=>{
 
-table.innerHTML="";
+dashboard.innerHTML="";
 
 const pickups=[];
 
@@ -303,29 +242,36 @@ pickups.push({id:child.key,...child.val()});
 
 pickups.sort((a,b)=>new Date(a.pickupTime)-new Date(b.pickupTime));
 
-pickups.forEach((p)=>{
+pickups.forEach(p=>{
 
-const row=document.createElement("tr");
+const card=document.createElement("div");
+card.className="pickup-card";
 
-row.innerHTML=`
+card.innerHTML=`
 
-<td>${p.flightNumber}</td>
-<td>${p.type}</td>
-<td>${p.stand || "-"}</td>
-<td>${new Date(p.pickupTime).toLocaleString()}</td>
-<td>${p.crew}</td>
-<td class="${p.status==="Completed"?"status-completed":"status-pending"}">${p.status}</td>
-<td>
+<div class="pickup-header">${p.flightNumber}</div>
 
-${p.status==="Pending"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:"-"}
+<div>${p.type} ${p.stand?("– Stand "+p.stand):""}</div>
+
+<div>Pickup: ${new Date(p.pickupTime).toLocaleString()}</div>
+
+<div>Crew: ${p.crew}</div>
+
+<div class="status ${p.status==="Completed"?"completed":"pending"}">
+${p.status}
+</div>
+
+<div class="actions">
+
+${p.status==="Pending"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:""}
 
 <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
 
-</td>
+</div>
 
 `;
 
-table.appendChild(row);
+dashboard.appendChild(card);
 
 });
 
