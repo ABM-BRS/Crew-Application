@@ -109,6 +109,12 @@
         .imminent {
             border-left: 5px solid #e53935;
         }
+
+        /* Highlight late pickups */
+        .late {
+            border-left: 5px solid #d32f2f;
+            background: #ffe6e6;
+        }
     </style>
 </head>
 
@@ -162,7 +168,6 @@
 
     const dashboard = document.getElementById("dashboard");
 
-    // Show/hide Stand field
     window.toggleStand = function () {
         const type = document.getElementById("type").value;
         const stand = document.getElementById("stand");
@@ -170,7 +175,6 @@
     }
     toggleStand();
 
-    // Confirm pickup
     window.confirmPickup = async function () {
         const flight = document.getElementById("flight").value.trim();
         const type = document.getElementById("type").value;
@@ -204,7 +208,6 @@
         document.getElementById("crew").value = "";
     }
 
-    // Complete pickup
     window.complete = async function (id) {
         const pickupRef = ref(db, "pickups1/" + id);
         await update(pickupRef, {
@@ -213,13 +216,11 @@
         });
     }
 
-    // Remove pickup
     window.removePickup = async function (id) {
         const pickupRef = ref(db, "pickups1/" + id);
         await remove(pickupRef);
     }
 
-    // Render dashboard
     function renderDashboard(pickups) {
         dashboard.innerHTML = "";
         pickups.sort((a, b) => new Date(a.pickupTime) - new Date(b.pickupTime));
@@ -227,14 +228,14 @@
         pickups.forEach(p => {
             const card = document.createElement("div");
             card.className = "pickup-card";
-            
+
             const pickupTime = new Date(p.pickupTime);
             const now = new Date();
             const diffMinutes = Math.floor((pickupTime - now) / 60000);
 
-            // Add urgency classes
             if (p.status === "Pending") {
-                if (diffMinutes <= 10) card.classList.add("imminent");
+                if (diffMinutes < 0) card.classList.add("late");
+                else if (diffMinutes <= 10) card.classList.add("imminent");
                 else if (diffMinutes <= 30) card.classList.add("urgent");
             }
 
@@ -246,7 +247,7 @@
                 <div class="status ${p.status === "Completed" ? "completed" : "pending"}">
                     ${p.status}
                 </div>
-                <div class="countdown">${p.status === "Pending" ? `Time left: ${diffMinutes >= 0 ? diffMinutes + " min" : "Departed"}` : ""}</div>
+                <div class="countdown">${p.status === "Pending" ? (diffMinutes >= 0 ? `Time left: ${diffMinutes} min` : "Late!") : ""}</div>
                 <div class="actions">
                     ${p.status === "Pending" ? `<button class="complete" onclick="complete('${p.id}')">Complete</button>` : ""}
                     <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
@@ -256,14 +257,12 @@
         });
     }
 
-    // Listen to Firebase changes
-    onValue(pickupsRef, (snapshot) => {
+    onValue(pickupsRef, snapshot => {
         const pickups = [];
-        snapshot.forEach((child) => pickups.push({ id: child.key, ...child.val() }));
+        snapshot.forEach(child => pickups.push({ id: child.key, ...child.val() }));
         renderDashboard(pickups);
     });
 
-    // Update countdowns every minute
     setInterval(() => {
         const cards = Array.from(document.getElementsByClassName("pickup-card"));
         cards.forEach(card => {
@@ -273,14 +272,15 @@
             const pickupTime = new Date(pickupTimeText);
             const now = new Date();
             const diffMinutes = Math.floor((pickupTime - now) / 60000);
-            timeEl.textContent = diffMinutes >= 0 ? `Time left: ${diffMinutes} min` : "Departed";
+            timeEl.textContent = diffMinutes >= 0 ? `Time left: ${diffMinutes} min` : "Late!";
 
             // Update urgency class dynamically
-            card.classList.remove("imminent", "urgent");
-            if (diffMinutes <= 10 && diffMinutes >= 0) card.classList.add("imminent");
-            else if (diffMinutes <= 30 && diffMinutes >= 0) card.classList.add("urgent");
+            card.classList.remove("imminent", "urgent", "late");
+            if (diffMinutes < 0) card.classList.add("late");
+            else if (diffMinutes <= 10) card.classList.add("imminent");
+            else if (diffMinutes <= 30) card.classList.add("urgent");
         });
-    }, 60000); // every 60 seconds
+    }, 60000);
 </script>
 
 </body>
