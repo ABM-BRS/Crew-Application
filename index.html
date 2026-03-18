@@ -1,96 +1,100 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Airport Pickup Dispatch</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airport Pickup Dispatch</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<style>
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <!-- Optional PNG for better resolution -->
+    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="favicon.png">
 
-body{
-font-family:Arial;
-background:#f4f6f8;
-padding:15px;
-max-width:900px;
-margin:auto;
-}
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f8;
+            padding: 15px;
+            max-width: 900px;
+            margin: auto;
+        }
 
-h1{
-text-align:center;
-}
+        h1 {
+            text-align: center;
+        }
 
-.card{
-background:white;
-padding:18px;
-margin-bottom:20px;
-border-radius:8px;
-box-shadow:0 2px 6px rgba(0,0,0,0.1);
-}
+        .card {
+            background: white;
+            padding: 18px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
 
-input,select,button{
-width:100%;
-padding:12px;
-margin:6px 0;
-font-size:16px;
-}
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            margin: 6px 0;
+            font-size: 16px;
+        }
 
-button{
-background:#007bff;
-color:white;
-border:none;
-border-radius:6px;
-cursor:pointer;
-}
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
 
-button:hover{
-background:#0056b3;
-}
+        button:hover {
+            background: #0056b3;
+        }
 
-.complete{
-background:#2e7d32;
-}
+        .complete {
+            background: #2e7d32;
+        }
 
-.delete{
-background:#e53935;
-}
+        .delete {
+            background: #e53935;
+        }
 
-.pickup-card{
-background:white;
-padding:15px;
-border-radius:8px;
-margin-bottom:15px;
-box-shadow:0 2px 6px rgba(0,0,0,0.1);
-}
+        .pickup-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
 
-.pickup-header{
-font-size:20px;
-font-weight:bold;
-margin-bottom:8px;
-}
+        .pickup-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
 
-.status{
-font-weight:bold;
-margin-top:5px;
-}
+        .status {
+            font-weight: bold;
+            margin-top: 5px;
+        }
 
-.pending{
-color:#f57c00;
-}
+        .pending {
+            color: #f57c00;
+        }
 
-.completed{
-color:#2e7d32;
-}
+        .completed {
+            color: #2e7d32;
+        }
 
-.actions{
-display:flex;
-gap:10px;
-margin-top:10px;
-}
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
 
-.actions button{
-flex:1;
-}
-
-</style>
+        .actions button {
+            flex: 1;
+        }
+    </style>
 </head>
 
 <body>
@@ -98,185 +102,137 @@ flex:1;
 <h1>Airport Pickup Dispatch</h1>
 
 <div class="card">
-
-<h2>Confirm Pickup</h2>
-
-<input id="flight" placeholder="Flight Number">
-
-<select id="type" onchange="toggleStand()">
-<option value="Inbound">Inbound</option>
-<option value="Outbound">Outbound</option>
-</select>
-
-<input id="stand" placeholder="Stand / Pickup Location">
-
-<input type="datetime-local" id="time">
-
-<select id="crew">
-<option value="">Crew Number</option>
-<option>1</option>
-<option>2</option>
-<option>3</option>
-<option>4</option>
-<option>5</option>
-<option>6</option>
-</select>
-
-<button onclick="confirmPickup()">Confirm Pickup</button>
-
+    <h2>Confirm Pickup</h2>
+    <input id="flight" placeholder="Flight Number">
+    <select id="type" onchange="toggleStand()">
+        <option value="Inbound">Inbound</option>
+        <option value="Outbound">Outbound</option>
+    </select>
+    <input id="stand" placeholder="Stand / Pickup Location">
+    <input type="datetime-local" id="time">
+    <select id="crew">
+        <option value="">Crew Number</option>
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
+    </select>
+    <button onclick="confirmPickup()">Confirm Pickup</button>
 </div>
 
 <div class="card">
-
-<h2>Active Pickups</h2>
-
-<div id="dashboard"></div>
-
+    <h2>Active Pickups</h2>
+    <div id="dashboard"></div>
 </div>
 
 <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, push, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    const firebaseConfig = {
+        apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
+        authDomain: "crew-app-e1315.firebaseapp.com",
+        projectId: "crew-app-e1315",
+        storageBucket: "crew-app-e1315.firebasestorage.app",
+        messagingSenderId: "320647227664",
+        appId: "1:320647227664:web:8de65c96c509d819a7dd95",
+        databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
+    };
 
-const firebaseConfig = {
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const pickupsRef = ref(db, "pickups1");
 
-apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
-authDomain: "crew-app-e1315.firebaseapp.com",
-projectId: "crew-app-e1315",
-storageBucket: "crew-app-e1315.firebasestorage.app",
-messagingSenderId: "320647227664",
-appId: "1:320647227664:web:8de65c96c509d819a7dd95",
-databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
+    const dashboard = document.getElementById("dashboard");
 
-};
+    // Show/hide Stand field
+    window.toggleStand = function () {
+        const type = document.getElementById("type").value;
+        const stand = document.getElementById("stand");
+        stand.style.display = type === "Inbound" ? "block" : "none";
+    }
+    toggleStand();
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const pickupsRef = ref(db,"pickups1");
+    // Confirm pickup
+    window.confirmPickup = async function () {
+        const flight = document.getElementById("flight").value.trim();
+        const type = document.getElementById("type").value;
+        const stand = document.getElementById("stand").value.trim();
+        const time = document.getElementById("time").value;
+        const crew = document.getElementById("crew").value;
 
-const dashboard=document.getElementById("dashboard");
+        if (!flight || !time || !crew) {
+            alert("Enter flight, time and crew");
+            return;
+        }
+        if (type === "Inbound" && !stand) {
+            alert("Enter stand for inbound");
+            return;
+        }
 
-window.toggleStand=function(){
+        await push(pickupsRef, {
+            flightNumber: flight,
+            type: type,
+            stand: stand,
+            pickupTime: new Date(time).toISOString(),
+            crew: crew,
+            status: "Pending",
+            createdTime: new Date().toISOString(),
+            completedTime: null
+        });
 
-const type=document.getElementById("type").value;
-const stand=document.getElementById("stand");
+        document.getElementById("flight").value = "";
+        document.getElementById("stand").value = "";
+        document.getElementById("time").value = "";
+        document.getElementById("crew").value = "";
+    }
 
-stand.style.display=type==="Inbound"?"block":"none";
+    // Complete pickup
+    window.complete = async function (id) {
+        const pickupRef = ref(db, "pickups1/" + id);
+        await update(pickupRef, {
+            status: "Completed",
+            completedTime: new Date().toISOString()
+        });
+    }
 
-}
+    // Remove pickup
+    window.removePickup = async function (id) {
+        const pickupRef = ref(db, "pickups1/" + id);
+        await remove(pickupRef);
+    }
 
-toggleStand();
+    // Render dashboard
+    onValue(pickupsRef, (snapshot) => {
+        dashboard.innerHTML = "";
+        const pickups = [];
+        snapshot.forEach((child) => {
+            pickups.push({ id: child.key, ...child.val() });
+        });
 
-window.confirmPickup=async function(){
+        pickups.sort((a, b) => new Date(a.pickupTime) - new Date(b.pickupTime));
 
-const flight=document.getElementById("flight").value.trim();
-const type=document.getElementById("type").value;
-const stand=document.getElementById("stand").value.trim();
-const time=document.getElementById("time").value;
-const crew=document.getElementById("crew").value;
-
-if(!flight||!time||!crew){
-
-alert("Enter flight, time and crew");
-return;
-
-}
-
-if(type==="Inbound"&&!stand){
-
-alert("Enter stand for inbound");
-return;
-
-}
-
-await push(pickupsRef,{
-
-flightNumber:flight,
-type:type,
-stand:stand,
-pickupTime:new Date(time).toISOString(),
-crew:crew,
-status:"Pending",
-createdTime:new Date().toISOString(),
-completedTime:null
-
-});
-
-document.getElementById("flight").value="";
-document.getElementById("stand").value="";
-document.getElementById("time").value="";
-document.getElementById("crew").value="";
-
-}
-
-window.complete=async function(id){
-
-const pickupRef=ref(db,"pickups1/"+id);
-
-await update(pickupRef,{
-status:"Completed",
-completedTime:new Date().toISOString()
-});
-
-}
-
-window.removePickup=async function(id){
-
-const pickupRef=ref(db,"pickups1/"+id);
-await remove(pickupRef);
-
-}
-
-onValue(pickupsRef,(snapshot)=>{
-
-dashboard.innerHTML="";
-
-const pickups=[];
-
-snapshot.forEach((child)=>{
-
-pickups.push({id:child.key,...child.val()});
-
-});
-
-pickups.sort((a,b)=>new Date(a.pickupTime)-new Date(b.pickupTime));
-
-pickups.forEach(p=>{
-
-const card=document.createElement("div");
-card.className="pickup-card";
-
-card.innerHTML=`
-
-<div class="pickup-header">${p.flightNumber}</div>
-
-<div>${p.type} ${p.stand?("– Stand "+p.stand):""}</div>
-
-<div>Pickup: ${new Date(p.pickupTime).toLocaleString()}</div>
-
-<div>Crew: ${p.crew}</div>
-
-<div class="status ${p.status==="Completed"?"completed":"pending"}">
-${p.status}
-</div>
-
-<div class="actions">
-
-${p.status==="Pending"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:""}
-
-<button class="delete" onclick="removePickup('${p.id}')">Delete</button>
-
-</div>
-
-`;
-
-dashboard.appendChild(card);
-
-});
-
-});
-
+        pickups.forEach(p => {
+            const card = document.createElement("div");
+            card.className = "pickup-card";
+            card.innerHTML = `
+                <div class="pickup-header">${p.flightNumber}</div>
+                <div>${p.type} ${p.stand ? ("– Stand " + p.stand) : ""}</div>
+                <div>Pickup: ${new Date(p.pickupTime).toLocaleString()}</div>
+                <div>Crew: ${p.crew}</div>
+                <div class="status ${p.status === "Completed" ? "completed" : "pending"}">
+                    ${p.status}
+                </div>
+                <div class="actions">
+                    ${p.status === "Pending" ? `<button class="complete" onclick="complete('${p.id}')">Complete</button>` : ""}
+                    <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
+                </div>
+            `;
+            dashboard.appendChild(card);
+        });
+    });
 </script>
 
 </body>
