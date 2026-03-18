@@ -29,7 +29,6 @@
         .urgent { border-left:5px solid #f57c00; }
         .imminent { border-left:5px solid #e53935; }
         .late { border-left:5px solid #d32f2f; background: #ffe6e6; }
-        /* Blinking effect for late pickups */
         @keyframes blink { 0% { background-color: #ffe6e6; } 50% { background-color: #ffcccc; } 100% { background-color: #ffe6e6; } }
         .late.blink { animation: blink 1s infinite; }
     </style>
@@ -62,12 +61,10 @@
 
 <div class="card">
     <h2>Active Pickups</h2>
-    <!-- Reset Alerts Button -->
     <button style="background:#ff9800; margin-bottom:10px;" onclick="resetAlerts()">Reset Alerts</button>
     <div id="dashboard"></div>
 </div>
 
-<!-- Audio alert for late pickups -->
 <audio id="alertSound" src="alert.mp3" preload="auto"></audio>
 
 <script type="module">
@@ -141,24 +138,33 @@ window.resetAlerts = function() {
     });
 };
 
-function renderDashboard(pickups) {
-    dashboard.innerHTML = "";
-    const now = new Date();
+// Firebase listener for all pickups
+onValue(pickupsRef, snapshot => {
+    const pickups = [];
 
-    pickups.forEach(p => {
-        p.pickupDate = new Date(p.pickupTime);
-        const diffMinutes = Math.floor((p.pickupDate - now)/60000);
-        p.diffMinutes = diffMinutes;
-        if (p.status !== "Pending") p.priority = 4;
-        else if (diffMinutes < 0) p.priority = 0;
-        else if (diffMinutes <= 10) p.priority = 1;
-        else if (diffMinutes <= 30) p.priority = 2;
-        else p.priority = 3;
-        p.alerted = false;
+    snapshot.forEach(child => {
+        pickups.push({ id: child.key, ...child.val() });
     });
 
-    pickups.sort((a,b) => a.priority - b.priority || a.pickupDate - b.pickupDate);
+    // Sort pickups: Late → Imminent → Urgent → Pending → Completed
+    pickups.sort((a, b) => {
+        const now = new Date();
+        const aTime = new Date(a.pickupTime);
+        const bTime = new Date(b.pickupTime);
 
+        const getPriority = (p, time) => {
+            if (p.status !== "Pending") return 4;
+            const diff = (time - now)/60000;
+            if (diff < 0) return 0;
+            if (diff <= 10) return 1;
+            if (diff <= 30) return 2;
+            return 3;
+        };
+        return getPriority(a, aTime) - getPriority(b, bTime) || aTime - bTime;
+    });
+
+    // Clear and render dashboard
+    dashboard.innerHTML = "";
     pickups.forEach(p => {
         const card = document.createElement("div");
         card.className = "pickup-card";
@@ -166,10 +172,12 @@ function renderDashboard(pickups) {
         card.dataset.status = p.status;
         card.dataset.alerted = "false";
 
+        const pickupDate = new Date(p.pickupTime);
+
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
             <div>${p.type}${p.stand ? " – Stand "+p.stand : ""}</div>
-            <div class="pickup-time">Pickup: ${p.pickupDate.toLocaleString()}</div>
+            <div class="pickup-time">Pickup: ${pickupDate.toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
             <div class="status ${p.status==="Completed"?"completed":"pending"}">${p.status}</div>
             <div class="countdown"></div>
@@ -178,18 +186,14 @@ function renderDashboard(pickups) {
                 <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
             </div>
         `;
+
         dashboard.appendChild(card);
     });
 
     updateCountdowns();
-}
-
-onValue(pickupsRef, snapshot => {
-    const pickups = [];
-    snapshot.forEach(child => pickups.push({id: child.key, ...child.val()}));
-    renderDashboard(pickups);
 });
 
+// Update countdowns and late alerts every second
 function updateCountdowns() {
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     const now = new Date();
