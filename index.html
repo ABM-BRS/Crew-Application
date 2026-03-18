@@ -6,7 +6,6 @@
 
     <!-- Favicon -->
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <!-- Optional PNG for better resolution -->
     <link rel="icon" href="favicon.png" type="image/png">
     <link rel="apple-touch-icon" href="favicon.png">
 
@@ -64,6 +63,7 @@
             border-radius: 8px;
             margin-bottom: 15px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
         }
 
         .pickup-header {
@@ -93,6 +93,21 @@
 
         .actions button {
             flex: 1;
+        }
+
+        .countdown {
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        /* Highlight soon pickups (<30 min) */
+        .urgent {
+            border-left: 5px solid #f57c00;
+        }
+
+        /* Highlight pickups within 10 minutes */
+        .imminent {
+            border-left: 5px solid #e53935;
         }
     </style>
 </head>
@@ -205,26 +220,33 @@
     }
 
     // Render dashboard
-    onValue(pickupsRef, (snapshot) => {
+    function renderDashboard(pickups) {
         dashboard.innerHTML = "";
-        const pickups = [];
-        snapshot.forEach((child) => {
-            pickups.push({ id: child.key, ...child.val() });
-        });
-
         pickups.sort((a, b) => new Date(a.pickupTime) - new Date(b.pickupTime));
 
         pickups.forEach(p => {
             const card = document.createElement("div");
             card.className = "pickup-card";
+            
+            const pickupTime = new Date(p.pickupTime);
+            const now = new Date();
+            const diffMinutes = Math.floor((pickupTime - now) / 60000);
+
+            // Add urgency classes
+            if (p.status === "Pending") {
+                if (diffMinutes <= 10) card.classList.add("imminent");
+                else if (diffMinutes <= 30) card.classList.add("urgent");
+            }
+
             card.innerHTML = `
                 <div class="pickup-header">${p.flightNumber}</div>
                 <div>${p.type} ${p.stand ? ("– Stand " + p.stand) : ""}</div>
-                <div>Pickup: ${new Date(p.pickupTime).toLocaleString()}</div>
+                <div>Pickup: ${pickupTime.toLocaleString()}</div>
                 <div>Crew: ${p.crew}</div>
                 <div class="status ${p.status === "Completed" ? "completed" : "pending"}">
                     ${p.status}
                 </div>
+                <div class="countdown">${p.status === "Pending" ? `Time left: ${diffMinutes >= 0 ? diffMinutes + " min" : "Departed"}` : ""}</div>
                 <div class="actions">
                     ${p.status === "Pending" ? `<button class="complete" onclick="complete('${p.id}')">Complete</button>` : ""}
                     <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
@@ -232,7 +254,33 @@
             `;
             dashboard.appendChild(card);
         });
+    }
+
+    // Listen to Firebase changes
+    onValue(pickupsRef, (snapshot) => {
+        const pickups = [];
+        snapshot.forEach((child) => pickups.push({ id: child.key, ...child.val() }));
+        renderDashboard(pickups);
     });
+
+    // Update countdowns every minute
+    setInterval(() => {
+        const cards = Array.from(document.getElementsByClassName("pickup-card"));
+        cards.forEach(card => {
+            const timeEl = card.querySelector(".countdown");
+            if (!timeEl) return;
+            const pickupTimeText = card.querySelector("div:nth-child(3)").textContent.replace("Pickup: ", "");
+            const pickupTime = new Date(pickupTimeText);
+            const now = new Date();
+            const diffMinutes = Math.floor((pickupTime - now) / 60000);
+            timeEl.textContent = diffMinutes >= 0 ? `Time left: ${diffMinutes} min` : "Departed";
+
+            // Update urgency class dynamically
+            card.classList.remove("imminent", "urgent");
+            if (diffMinutes <= 10 && diffMinutes >= 0) card.classList.add("imminent");
+            else if (diffMinutes <= 30 && diffMinutes >= 0) card.classList.add("urgent");
+        });
+    }, 60000); // every 60 seconds
 </script>
 
 </body>
