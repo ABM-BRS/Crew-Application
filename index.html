@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Favicon -->
-    <link rel="icon" href="favicon.png" type="image/png">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
     <link rel="apple-touch-icon" href="favicon.png">
 
     <!-- PWA Manifest -->
@@ -72,7 +72,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// Firebase config
 const firebaseConfig = {
     apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
     authDomain: "crew-app-e1315.firebaseapp.com",
@@ -83,20 +82,17 @@ const firebaseConfig = {
     databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
 
-// Show/Hide Stand input
 window.toggleStand = function () {
     document.getElementById("stand").style.display = document.getElementById("type").value === "Inbound" ? "block" : "none";
 };
 toggleStand();
 
-// Confirm Pickup
 window.confirmPickup = async function () {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
@@ -123,18 +119,15 @@ window.confirmPickup = async function () {
     document.getElementById("crew").value = "";
 };
 
-// Complete or Delete Pickup
 window.complete = async function (id) { await update(ref(db, "pickups1/" + id), { status: "Completed", completedTime: new Date().toISOString() }); };
 window.removePickup = async function (id) { await remove(ref(db, "pickups1/" + id)); };
 
-// Reset Alerts
 window.resetAlerts = function() {
     alertSound.pause(); alertSound.currentTime=0;
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     cards.forEach(card => { card.classList.remove("blink"); card.dataset.alerted="false"; });
 };
 
-// Listen for Pickups
 onValue(pickupsRef, snapshot => {
     const pickups = [];
     snapshot.forEach(child => { pickups.push({ id: child.key, ...child.val() }); });
@@ -175,7 +168,6 @@ onValue(pickupsRef, snapshot => {
     updateCountdowns();
 });
 
-// Countdown logic
 function updateCountdowns() {
     const cards=Array.from(document.getElementsByClassName("pickup-card"));
     const now=new Date();
@@ -201,7 +193,6 @@ function updateCountdowns() {
 }
 setInterval(updateCountdowns,1000);
 
-// Install App (PWA)
 let deferredPrompt;
 const installButton=document.getElementById("installButton");
 window.addEventListener("beforeinstallprompt", (e)=>{
