@@ -15,6 +15,7 @@
         body { font-family: Arial; background: #f4f6f8; padding: 15px; max-width: 900px; margin: auto; }
         h1 { text-align: center; }
         .card { background: white; padding: 18px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        label { font-weight: bold; display:block; margin-top:10px; }
         input, select, button { width: 100%; padding: 12px; margin: 6px 0; font-size: 16px; }
         button { background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; }
         button:hover { background: #0056b3; }
@@ -45,18 +46,34 @@
 
 <div class="card">
     <h2>Confirm Pickup</h2>
-    <input id="flight" placeholder="Flight Number">
+    
+    <!-- 1. Inbound / Outbound -->
+    <label for="type">Type</label>
     <select id="type" onchange="toggleStand()">
         <option value="Inbound">Inbound</option>
         <option value="Outbound">Outbound</option>
     </select>
+
+    <!-- 2. Flight number -->
+    <label for="flight">Flight Number</label>
+    <input id="flight" placeholder="Flight Number">
+
+    <!-- 3. Stand / Pickup Location -->
+    <label for="stand">Stand / Pickup Location</label>
     <input id="stand" placeholder="Stand / Pickup Location">
+
+    <!-- 4. Date and Time of Request -->
+    <label for="time">Date and Time of Request</label>
     <input type="datetime-local" id="time">
+
+    <!-- 5. Number of Crew -->
+    <label for="crew">Number of Crew</label>
     <select id="crew">
         <option value="">Crew Number</option>
         <option>1</option><option>2</option><option>3</option>
         <option>4</option><option>5</option><option>6</option>
     </select>
+
     <button onclick="confirmPickup()">Confirm Pickup</button>
 </div>
 
