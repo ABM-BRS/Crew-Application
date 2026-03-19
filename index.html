@@ -41,32 +41,25 @@
 <body>
 <h1>Airport Pickup Dispatch</h1>
 
-<!-- Install App Button -->
 <button id="installButton">Install App</button>
 
 <div class="card">
     <h2>Confirm Pickup</h2>
-    
-    <!-- 1. Inbound / Outbound -->
     <label for="type">Type</label>
     <select id="type" onchange="toggleStand()">
         <option value="Inbound">Inbound</option>
         <option value="Outbound">Outbound</option>
     </select>
 
-    <!-- 2. Flight number -->
     <label for="flight">Flight Number</label>
     <input id="flight" placeholder="Flight Number">
 
-    <!-- 3. Stand / Pickup Location -->
     <label for="stand">Stand / Pickup Location</label>
     <input id="stand" placeholder="Stand / Pickup Location">
 
-    <!-- 4. Date and Time of Request -->
     <label for="time">Date and Time of Request</label>
     <input type="datetime-local" id="time">
 
-    <!-- 5. Number of Crew -->
     <label for="crew">Number of Crew</label>
     <select id="crew">
         <option value="">Crew Number</option>
@@ -78,7 +71,7 @@
 </div>
 
 <div class="card">
-    <h2>Active Pickups</h2>
+    <h2>Active Pickups (Last 24h)</h2>
     <button style="background:#ff9800; margin-bottom:10px;" onclick="resetAlerts()">Reset Alerts</button>
     <div id="dashboard"></div>
 </div>
@@ -105,11 +98,13 @@ const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
 
+// --- Helpers ---
 window.toggleStand = function () {
     document.getElementById("stand").style.display = document.getElementById("type").value === "Inbound" ? "block" : "none";
 };
 toggleStand();
 
+// --- Capture Pickup ---
 window.confirmPickup = async function () {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
@@ -119,7 +114,7 @@ window.confirmPickup = async function () {
     if (!flight || !time || !crew) { alert("Enter flight, time and crew"); return; }
     if (type === "Inbound" && !stand) { alert("Enter stand for inbound"); return; }
 
-    await push(pickupsRef, {
+    const newJob = {
         flightNumber: flight,
         type: type,
         stand: stand,
@@ -128,29 +123,53 @@ window.confirmPickup = async function () {
         status: "Pending",
         createdTime: new Date().toISOString(),
         completedTime: null
-    });
+    };
 
+    // Push to Firebase
+    await push(pickupsRef, newJob);
+
+    // Send all jobs to Google Sheets
+    try {
+        await fetch("YOUR_GOOGLE_SCRIPT_WEBAPP_URL", {
+            method: "POST",
+            body: JSON.stringify(newJob)
+        });
+    } catch(e) { console.warn("Failed to send to Google Sheets:", e); }
+
+    // Reset form
     document.getElementById("flight").value = "";
     document.getElementById("stand").value = "";
     document.getElementById("time").value = "";
     document.getElementById("crew").value = "";
 };
 
+// --- Complete / Remove ---
 window.complete = async function (id) { await update(ref(db, "pickups1/" + id), { status: "Completed", completedTime: new Date().toISOString() }); };
 window.removePickup = async function (id) { await remove(ref(db, "pickups1/" + id)); };
 
+// --- Reset alerts ---
 window.resetAlerts = function() {
     alertSound.pause(); alertSound.currentTime=0;
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     cards.forEach(card => { card.classList.remove("blink"); card.dataset.alerted="false"; });
 };
 
+// --- Live jobs: last 24h ---
 onValue(pickupsRef, snapshot => {
     const pickups = [];
-    snapshot.forEach(child => { pickups.push({ id: child.key, ...child.val() }); });
+    const now = new Date();
+    const DAY_MS = 24*60*60*1000;
+
+    snapshot.forEach(child => {
+        const data = { id: child.key, ...child.val() };
+        const createdTime = new Date(data.createdTime);
+        if (now - createdTime <= DAY_MS) { // last 24h only
+            pickups.push(data);
+        }
+    });
 
     pickups.sort((a,b)=>{
-        const now=new Date(); const aTime=new Date(a.pickupTime); const bTime=new Date(b.pickupTime);
+        const aTime=new Date(a.pickupTime), bTime=new Date(b.pickupTime);
         const getPriority = (p,time)=>{
             if(p.status!=="Pending") return 4;
             const diff=(time-now)/60000;
@@ -185,6 +204,7 @@ onValue(pickupsRef, snapshot => {
     updateCountdowns();
 });
 
+// --- Countdown timer ---
 function updateCountdowns() {
     const cards=Array.from(document.getElementsByClassName("pickup-card"));
     const now=new Date();
@@ -210,6 +230,7 @@ function updateCountdowns() {
 }
 setInterval(updateCountdowns,1000);
 
+// --- PWA install ---
 let deferredPrompt;
 const installButton=document.getElementById("installButton");
 window.addEventListener("beforeinstallprompt", (e)=>{
@@ -223,6 +244,8 @@ installButton.addEventListener("click", async ()=>{
     const choice=await deferredPrompt.userChoice;
     deferredPrompt=null;
 });
+
+// --- Service worker ---
 if('serviceWorker' in navigator){
     navigator.serviceWorker.register('service-worker.js').then(()=>console.log("Service Worker registered"));
 }
