@@ -3,14 +3,9 @@
 <head>
     <title>Airport Pickup Dispatch</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- Favicon -->
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     <link rel="apple-touch-icon" href="favicon.png">
-
-    <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
-
     <style>
         body { font-family: Arial; background: #f4f6f8; padding: 15px; max-width: 900px; margin: auto; }
         h1 { text-align: center; }
@@ -40,7 +35,6 @@
 
 <body>
 <h1>Airport Pickup Dispatch</h1>
-
 <button id="installButton">Install App</button>
 
 <div class="card">
@@ -50,23 +44,18 @@
         <option value="Inbound">Inbound</option>
         <option value="Outbound">Outbound</option>
     </select>
-
     <label for="flight">Flight Number</label>
     <input id="flight" placeholder="Flight Number">
-
     <label for="stand">Stand / Pickup Location</label>
     <input id="stand" placeholder="Stand / Pickup Location">
-
     <label for="time">Date and Time of Request</label>
     <input type="datetime-local" id="time">
-
     <label for="crew">Number of Crew</label>
     <select id="crew">
         <option value="">Crew Number</option>
         <option>1</option><option>2</option><option>3</option>
         <option>4</option><option>5</option><option>6</option>
     </select>
-
     <button onclick="confirmPickup()">Confirm Pickup</button>
 </div>
 
@@ -82,6 +71,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+// --- Firebase Config ---
 const firebaseConfig = {
     apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
     authDomain: "crew-app-e1315.firebaseapp.com",
@@ -91,15 +81,14 @@ const firebaseConfig = {
     appId: "1:320647227664:web:8de65c96c509d819a7dd95",
     databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
 
-// <-- REPLACE THIS with your actual Google Script Web App URL -->
-const SHEETS_URL = "https://script.google.com/macros/s/AKfycbwoj3XI9lk7PUwaClni9VKFVPilD6jQrEqmEh6GnIjHoNpLlno-IJSpr3CgCKpe5kBNSQ/exec"; 
+// --- Google Sheets Web App URL ---
+const SHEETS_URL = "YOUR_WEB_APP_URL_HERE"; // <-- Replace with your deployed Google Apps Script Web App URL
 
 // --- Helpers ---
 window.toggleStand = function () {
@@ -107,7 +96,7 @@ window.toggleStand = function () {
 };
 toggleStand();
 
-// --- Capture Pickup ---
+// --- Confirm Pickup ---
 window.confirmPickup = async function () {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
@@ -131,7 +120,7 @@ window.confirmPickup = async function () {
     // Push to Firebase
     const jobRef = await push(pickupsRef, newJob);
 
-    // Send new job to Google Sheets
+    // Send job to Google Sheets
     try {
         await fetch(SHEETS_URL, { method: "POST", body: JSON.stringify({ id: jobRef.key, ...newJob }) });
     } catch(e) { console.warn("Failed to send to Google Sheets:", e); }
@@ -144,13 +133,13 @@ window.confirmPickup = async function () {
 };
 
 // --- Complete / Remove ---
-window.complete = async function (id) {
+window.complete = async function(id) {
     const updateData = { status: "Completed", completedTime: new Date().toISOString() };
     await update(ref(db, "pickups1/" + id), updateData);
-    try { await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ id, ...updateData }) }); } 
+    try { await fetch(SHEETS_URL, { method: "POST", body: JSON.stringify({ id, ...updateData }) }); } 
     catch(e){ console.warn("Failed to update Google Sheets:", e); }
 };
-window.removePickup = async function (id) {
+window.removePickup = async function(id) {
     await remove(ref(db, "pickups1/" + id));
     try { await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ id, status:"Deleted" }) }); } 
     catch(e){ console.warn("Failed to update Google Sheets:", e); }
@@ -159,24 +148,25 @@ window.removePickup = async function (id) {
 // --- Reset alerts ---
 window.resetAlerts = function() {
     alertSound.pause(); alertSound.currentTime=0;
-    const cards = Array.from(document.getElementsByClassName("pickup-card"));
-    cards.forEach(card => { card.classList.remove("blink"); card.dataset.alerted="false"; });
+    Array.from(document.getElementsByClassName("pickup-card")).forEach(card=>{
+        card.classList.remove("blink"); card.dataset.alerted="false";
+    });
 };
 
-// --- Live jobs: last 24h ---
+// --- Live pickups last 24h ---
 onValue(pickupsRef, snapshot => {
     const pickups = [];
     const now = new Date();
     const DAY_MS = 24*60*60*1000;
 
-    snapshot.forEach(child => {
+    snapshot.forEach(child=>{
         const data = { id: child.key, ...child.val() };
         const createdTime = new Date(data.createdTime);
-        if (now - createdTime <= DAY_MS) pickups.push(data);
+        if(now - createdTime <= DAY_MS) pickups.push(data);
     });
 
     pickups.sort((a,b)=>{
-        const aTime=new Date(a.pickupTime), bTime=new Date(b.pickupTime);
+        const aTime = new Date(a.pickupTime), bTime = new Date(b.pickupTime);
         const getPriority = (p,time)=>{
             if(p.status!=="Pending") return 4;
             const diff=(time-now)/60000;
@@ -188,7 +178,7 @@ onValue(pickupsRef, snapshot => {
         return getPriority(a,aTime)-getPriority(b,bTime) || aTime-bTime;
     });
 
-    dashboard.innerHTML="";
+    dashboard.innerHTML = "";
     pickups.forEach(p=>{
         const card=document.createElement("div"); card.className="pickup-card";
         card.dataset.pickupTime=p.pickupTime; card.dataset.status=p.status; card.dataset.alerted="false";
@@ -211,16 +201,16 @@ onValue(pickupsRef, snapshot => {
     updateCountdowns();
 });
 
-// --- Countdown timer ---
+// --- Countdown ---
 function updateCountdowns() {
-    const cards=Array.from(document.getElementsByClassName("pickup-card"));
-    const now=new Date();
+    const cards = Array.from(document.getElementsByClassName("pickup-card"));
+    const now = new Date();
     cards.forEach(card=>{
-        const status=card.dataset.status;
-        const countdownEl=card.querySelector(".countdown");
-        const pickupTime=new Date(card.dataset.pickupTime);
+        const status = card.dataset.status;
+        const countdownEl = card.querySelector(".countdown");
+        const pickupTime = new Date(card.dataset.pickupTime);
         if(status!=="Pending"){ countdownEl.textContent=""; card.classList.remove("imminent","urgent","late","blink"); return; }
-        let diffSeconds=Math.floor((pickupTime-now)/1000);
+        let diffSeconds = Math.floor((pickupTime-now)/1000);
         if(diffSeconds<0){
             countdownEl.textContent="Late!";
             card.classList.remove("imminent","urgent"); card.classList.add("late","blink");
@@ -240,12 +230,10 @@ setInterval(updateCountdowns,1000);
 // --- PWA install ---
 let deferredPrompt;
 const installButton=document.getElementById("installButton");
-window.addEventListener("beforeinstallprompt", (e)=>{
-    e.preventDefault();
-    deferredPrompt=e;
-    installButton.style.display="block";
+window.addEventListener("beforeinstallprompt",(e)=>{
+    e.preventDefault(); deferredPrompt=e; installButton.style.display="block";
 });
-installButton.addEventListener("click", async ()=>{
+installButton.addEventListener("click",async()=>{
     installButton.style.display="none";
     deferredPrompt.prompt();
     const choice=await deferredPrompt.userChoice;
