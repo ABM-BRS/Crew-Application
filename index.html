@@ -4,11 +4,10 @@
     <title>Airport Pickup Dispatch</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- ✅ Manifest for PWA -->
+    <!-- ✅ PWA Manifest -->
     <link rel="manifest" href="manifest.json">
 
     <!-- Favicon -->
-    <link rel="icon" href="favicon.ico" type="image/x-icon">
     <link rel="icon" href="favicon.png" type="image/png">
     <link rel="apple-touch-icon" href="favicon.png">
 
@@ -21,13 +20,21 @@
         button:hover { background: #0056b3; }
         .complete { background: #2e7d32; }
         .delete { background: #e53935; }
-        .pickup-card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+        .pickup-card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow:0 2px 6px rgba(0,0,0,0.1); position: relative; transition: all 0.3s ease; }
         .pickup-header { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
         .status { font-weight: bold; margin-top: 5px; }
         .pending { color: #f57c00; }
         .completed { color: #2e7d32; }
         .actions { display:flex; gap:10px; margin-top:10px; }
         .actions button { flex:1; }
+        .countdown { font-weight: bold; margin-top:5px; }
+        .urgent { border-left:5px solid #f57c00; }
+        .imminent { border-left:5px solid #e53935; }
+        .late { border-left:5px solid #d32f2f; background: #ffe6e6; }
+        @keyframes blink { 0% { background-color: #ffe6e6; } 50% { background-color: #ffcccc; } 100% { background-color: #ffe6e6; } }
+        .late.blink { animation: blink 1s infinite; }
+        #installBtn { display:none; background:#4caf50; color:white; margin-bottom:10px; padding:12px; border:none; border-radius:6px; font-size:16px; cursor:pointer; }
+        #installBtn:hover { background:#388e3c; }
     </style>
 </head>
 
@@ -58,16 +65,24 @@
 
 <div class="card">
     <h2>Active Pickups</h2>
+
+    <!-- Reset Alerts Button -->
     <button style="background:#ff9800; margin-bottom:10px;" onclick="resetAlerts()">Reset Alerts</button>
+
+    <!-- ✅ Install App Button -->
+    <button id="installBtn">Install App</button>
+
+    <!-- Dashboard for pickups -->
     <div id="dashboard"></div>
 </div>
 
-<audio id="alertSound" src="alert.mp3"></audio>
+<audio id="alertSound" src="alert.mp3" preload="auto"></audio>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+// Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
     authDomain: "crew-app-e1315.firebaseapp.com",
@@ -84,12 +99,14 @@ const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
 
+// Toggle Stand Field
 window.toggleStand = () => {
     document.getElementById("stand").style.display =
         document.getElementById("type").value === "Inbound" ? "block" : "none";
 };
 toggleStand();
 
+// Confirm Pickup
 window.confirmPickup = async () => {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
@@ -97,8 +114,8 @@ window.confirmPickup = async () => {
     const timeVal = document.getElementById("time").value;
     const crewVal = document.getElementById("crew").value;
 
-    if (!flight || !timeVal || !crewVal) { alert("Enter flight, time and crew"); return; }
-    if (type === "Inbound" && !standVal) { alert("Enter stand for inbound"); return; }
+    if(!flight || !timeVal || !crewVal){ alert("Enter flight, time and crew"); return; }
+    if(type==="Inbound" && !standVal){ alert("Enter stand for inbound"); return; }
 
     await push(pickupsRef, {
         flightNumber: flight,
@@ -117,42 +134,119 @@ window.confirmPickup = async () => {
     document.getElementById("crew").value = "";
 };
 
+// Complete Pickup
 window.complete = async (id) => {
     await update(ref(db,"pickups1/"+id),{status:"Completed", completedTime:new Date().toISOString()});
 };
 
+// Remove Pickup
 window.removePickup = async (id) => {
     await remove(ref(db,"pickups1/"+id));
 };
 
+// Reset Alerts
 window.resetAlerts = () => {
     alertSound.pause();
     alertSound.currentTime = 0;
+    const cards = Array.from(document.getElementsByClassName("pickup-card"));
+    cards.forEach(card => card.classList.remove("late","blink","imminent","urgent"));
 };
 
+// Firebase Listener
 onValue(pickupsRef, snapshot => {
     dashboard.innerHTML = "";
-    snapshot.forEach(child => {
-        const p = child.val();
-        const card = document.createElement("div");
-        card.className = "pickup-card";
-        card.dataset.time = p.pickupTime;
-        card.dataset.status = p.status;
+    const pickups = [];
+    snapshot.forEach(child => pickups.push({id: child.key, ...child.val()}));
 
-        card.innerHTML = `
+    pickups.sort((a,b)=>new Date(a.pickupTime)-new Date(b.pickupTime));
+
+    pickups.forEach(p=>{
+        const card = document.createElement("div");
+        card.className="pickup-card";
+        card.dataset.pickupTime=p.pickupTime;
+        card.dataset.status=p.status;
+        card.dataset.alerted="false";
+
+        const pickupDate = new Date(p.pickupTime);
+
+        card.innerHTML=`
             <div class="pickup-header">${p.flightNumber}</div>
-            <div>${p.type}${p.stand ? " – Stand " + p.stand : ""}</div>
-            <div>Pickup: ${new Date(p.pickupTime).toLocaleString()}</div>
+            <div>${p.type}${p.stand ? " – Stand "+p.stand : ""}</div>
+            <div>Pickup: ${pickupDate.toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
             <div class="status ${p.status==="Completed"?"completed":"pending"}">${p.status}</div>
+            <div class="countdown"></div>
             <div class="actions">
-                ${p.status==="Pending"?`<button class="complete" onclick="complete('${child.key}')">Complete</button>`:""}
-                <button class="delete" onclick="removePickup('${child.key}')">Delete</button>
+                ${p.status==="Pending"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:""}
+                <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
             </div>
         `;
         dashboard.appendChild(card);
     });
+
+    updateCountdowns();
 });
+
+// Countdown & Alerts
+function updateCountdowns(){
+    const cards = Array.from(document.getElementsByClassName("pickup-card"));
+    const now = new Date();
+
+    cards.forEach(card=>{
+        const status = card.dataset.status;
+        const pickupTime = new Date(card.dataset.pickupTime);
+        const countdownEl = card.querySelector(".countdown");
+
+        if(status!=="Pending"){ 
+            countdownEl.textContent="";
+            card.classList.remove("imminent","urgent","late","blink");
+            return;
+        }
+
+        const diffMin = Math.floor((pickupTime-now)/60000);
+        if(diffMin<0){
+            countdownEl.textContent="Late!";
+            card.classList.remove("imminent","urgent");
+            card.classList.add("late","blink");
+            if(card.dataset.alerted==="false"){
+                alertSound.play();
+                card.dataset.alerted="true";
+            }
+        }else{
+            const mins = Math.floor((pickupTime-now)/60000);
+            const secs = Math.floor((pickupTime-now)/1000)%60;
+            countdownEl.textContent=`Time left: ${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')} min`;
+            card.classList.remove("imminent","urgent","late","blink");
+            if(mins<=10) card.classList.add("imminent");
+            else if(mins<=30) card.classList.add("urgent");
+            card.dataset.alerted="false";
+        }
+    });
+}
+
+setInterval(updateCountdowns,1000);
+
+// ✅ Install App Button Logic
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e=>{
+    e.preventDefault();
+    deferredPrompt=e;
+    const btn=document.getElementById("installBtn");
+    btn.style.display="block";
+    btn.onclick=async ()=>{
+        btn.style.display="none";
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        deferredPrompt=null;
+    };
+});
+
+// ✅ Service Worker Registration (PWA Requirement)
+if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('service-worker.js')
+    .then(()=>console.log("Service Worker registered"))
+    .catch(err=>console.error("Service Worker failed:",err));
+}
 </script>
 
 </body>
