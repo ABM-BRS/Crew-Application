@@ -4,7 +4,7 @@
     <title>Airport Pickup Dispatch</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- ✅ Manifest -->
+    <!-- ✅ Manifest for PWA -->
     <link rel="manifest" href="manifest.json">
 
     <!-- Favicon -->
@@ -28,9 +28,6 @@
         .completed { color: #2e7d32; }
         .actions { display:flex; gap:10px; margin-top:10px; }
         .actions button { flex:1; }
-        .countdown { font-weight: bold; margin-top:5px; }
-        .late { background: #ffe6e6; animation: blink 1s infinite; }
-        @keyframes blink { 0% { background:#ffe6e6;} 50% { background:#ffcccc;} 100% { background:#ffe6e6;} }
     </style>
 </head>
 
@@ -49,22 +46,19 @@
     <input type="datetime-local" id="time">
     <select id="crew">
         <option value="">Crew Number</option>
-        <option>1</option><option>2</option><option>3</option>
-        <option>4</option><option>5</option><option>6</option>
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
     </select>
     <button onclick="confirmPickup()">Confirm Pickup</button>
 </div>
 
 <div class="card">
     <h2>Active Pickups</h2>
-
-    <button onclick="resetAlerts()" style="background:#ff9800;">Reset Alerts</button>
-
-    <!-- ✅ INSTALL BUTTON -->
-    <button id="installBtn" style="background:#4caf50; display:none; margin-top:10px;">
-        Install App
-    </button>
-
+    <button style="background:#ff9800; margin-bottom:10px;" onclick="resetAlerts()">Reset Alerts</button>
     <div id="dashboard"></div>
 </div>
 
@@ -75,8 +69,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
-    apiKey: "AIzaSy...",
+    apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
     authDomain: "crew-app-e1315.firebaseapp.com",
+    projectId: "crew-app-e1315",
+    storageBucket: "crew-app-e1315.firebasestorage.app",
+    messagingSenderId: "320647227664",
+    appId: "1:320647227664:web:8de65c96c509d819a7dd95",
     databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
 };
 
@@ -93,13 +91,14 @@ window.toggleStand = () => {
 toggleStand();
 
 window.confirmPickup = async () => {
-    const flight = flight.value.trim();
-    const type = type.value;
-    const standVal = stand.value.trim();
-    const timeVal = time.value;
-    const crewVal = crew.value;
+    const flight = document.getElementById("flight").value.trim();
+    const type = document.getElementById("type").value;
+    const standVal = document.getElementById("stand").value.trim();
+    const timeVal = document.getElementById("time").value;
+    const crewVal = document.getElementById("crew").value;
 
-    if (!flight || !timeVal || !crewVal) return alert("Fill required fields");
+    if (!flight || !timeVal || !crewVal) { alert("Enter flight, time and crew"); return; }
+    if (type === "Inbound" && !standVal) { alert("Enter stand for inbound"); return; }
 
     await push(pickupsRef, {
         flightNumber: flight,
@@ -107,89 +106,53 @@ window.confirmPickup = async () => {
         stand: standVal,
         pickupTime: new Date(timeVal).toISOString(),
         crew: crewVal,
-        status: "Pending"
+        status: "Pending",
+        createdTime: new Date().toISOString(),
+        completedTime: null
     });
 
-    document.querySelectorAll("input,select").forEach(e => e.value="");
+    document.getElementById("flight").value = "";
+    document.getElementById("stand").value = "";
+    document.getElementById("time").value = "";
+    document.getElementById("crew").value = "";
 };
 
-window.complete = id => update(ref(db,"pickups1/"+id),{status:"Completed"});
-window.removePickup = id => remove(ref(db,"pickups1/"+id));
+window.complete = async (id) => {
+    await update(ref(db,"pickups1/"+id),{status:"Completed", completedTime:new Date().toISOString()});
+};
+
+window.removePickup = async (id) => {
+    await remove(ref(db,"pickups1/"+id));
+};
 
 window.resetAlerts = () => {
     alertSound.pause();
     alertSound.currentTime = 0;
 };
 
-onValue(pickupsRef, snap => {
+onValue(pickupsRef, snapshot => {
     dashboard.innerHTML = "";
-    snap.forEach(c => {
-        const p = c.val();
+    snapshot.forEach(child => {
+        const p = child.val();
         const card = document.createElement("div");
-        card.className="pickup-card";
-        card.dataset.time=p.pickupTime;
-        card.dataset.status=p.status;
+        card.className = "pickup-card";
+        card.dataset.time = p.pickupTime;
+        card.dataset.status = p.status;
 
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
-            <div>${p.type}</div>
+            <div>${p.type}${p.stand ? " – Stand " + p.stand : ""}</div>
+            <div>Pickup: ${new Date(p.pickupTime).toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
-            <div class="status">${p.status}</div>
-            <div class="countdown"></div>
+            <div class="status ${p.status==="Completed"?"completed":"pending"}">${p.status}</div>
             <div class="actions">
-                ${p.status==="Pending"?`<button onclick="complete('${c.key}')">Complete</button>`:""}
-                <button onclick="removePickup('${c.key}')">Delete</button>
+                ${p.status==="Pending"?`<button class="complete" onclick="complete('${child.key}')">Complete</button>`:""}
+                <button class="delete" onclick="removePickup('${child.key}')">Delete</button>
             </div>
         `;
         dashboard.appendChild(card);
     });
-    updateCountdowns();
 });
-
-function updateCountdowns(){
-    document.querySelectorAll(".pickup-card").forEach(card=>{
-        const diff=(new Date(card.dataset.time)-new Date())/1000;
-        const cd=card.querySelector(".countdown");
-
-        if(card.dataset.status!=="Pending") return cd.textContent="";
-
-        if(diff<0){
-            cd.textContent="Late!";
-            card.classList.add("late");
-            alertSound.play().catch(()=>{});
-        }else{
-            cd.textContent=`${Math.floor(diff/60)}m ${Math.floor(diff%60)}s`;
-            card.classList.remove("late");
-        }
-    });
-}
-setInterval(updateCountdowns,1000);
-
-
-// ✅ INSTALL APP LOGIC
-let deferredPrompt;
-
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-
-    const btn = document.getElementById("installBtn");
-    btn.style.display = "block";
-
-    btn.onclick = async () => {
-        btn.style.display = "none";
-        deferredPrompt.prompt();
-        await deferredPrompt.userChoice;
-        deferredPrompt = null;
-    };
-});
-
-
-// ✅ SERVICE WORKER REGISTER
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js');
-}
-
 </script>
 
 </body>
