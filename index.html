@@ -4,11 +4,8 @@
     <title>Airport Pickup Dispatch</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- Favicon -->
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     <link rel="apple-touch-icon" href="favicon.png">
-
-    <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
 
     <style>
@@ -97,7 +94,7 @@ const db = getDatabase(app);
 const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
-const SHEETS_URL = "YOUR_GOOGLE_SCRIPT_WEBAPP_URL"; // <-- replace with your web app URL
+const SHEETS_URL = "YOUR_GOOGLE_SCRIPT_WEBAPP_URL"; // <-- replace with your Web App URL
 
 // --- Helpers ---
 window.toggleStand = function () {
@@ -129,9 +126,9 @@ window.confirmPickup = async function () {
     // Push to Firebase
     const jobRef = await push(pickupsRef, newJob);
 
-    // Send all jobs to Google Sheets
+    // Send job to Google Sheets (with rowId = Firebase key)
     try {
-        await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ id: jobRef.key, ...newJob }) });
+        await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ rowId: jobRef.key, ...newJob }) });
     } catch(e) { console.warn("Failed to send to Google Sheets:", e); }
 
     // Reset form
@@ -145,14 +142,16 @@ window.confirmPickup = async function () {
 window.complete = async function (id) {
     const updateData = { status: "Completed", completedTime: new Date().toISOString() };
     await update(ref(db, "pickups1/" + id), updateData);
+
     // Update Google Sheet
-    try { await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ id, ...updateData }) }); } 
+    try { await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ rowId:id, ...updateData }) }); } 
     catch(e){ console.warn("Failed to update Google Sheets:", e); }
 };
+
 window.removePickup = async function (id) {
     await remove(ref(db, "pickups1/" + id));
     // Optionally mark as deleted in Google Sheet
-    try { await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ id, status:"Deleted" }) }); } 
+    try { await fetch(SHEETS_URL, { method:"POST", body: JSON.stringify({ rowId:id, status:"Deleted" }) }); } 
     catch(e){ console.warn("Failed to update Google Sheets:", e); }
 };
 
