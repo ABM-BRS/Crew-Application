@@ -1,55 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Airport Pickup Dispatch</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial; background: #f4f6f8; padding: 15px; max-width: 900px; margin: auto; }
+        h1 { text-align: center; }
+        .card { background: white; padding: 18px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        label { font-weight: bold; display:block; margin-top:10px; }
+        input, select, button { width: 100%; padding: 12px; margin: 6px 0; font-size: 16px; }
+        button { background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .complete { background: #2e7d32; }
+        .delete { background: #e53935; }
+        .pickup-card { background:white; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+        .pickup-header { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+        .status { font-weight: bold; margin-top: 5px; }
+        .pending { color: #f57c00; }
+        .completed { color: #2e7d32; }
+        .actions { display:flex; gap:10px; margin-top:10px; }
+        .actions button { flex:1; }
+        .countdown { font-weight: bold; margin-top:5px; }
+        .urgent { border-left:5px solid #f57c00; }
+        .imminent { border-left:5px solid #e53935; }
+        .late { border-left:5px solid #d32f2f; background: #ffe6e6; }
+    </style>
+</head>
+
+<body>
+<h1>Airport Pickup Dispatch</h1>
+
+<div class="card">
+    <h2>Confirm Pickup</h2>
+
+    <label>Type</label>
+    <select id="type" onchange="toggleStand()">
+        <option value="Inbound">Inbound</option>
+        <option value="Outbound">Outbound</option>
+    </select>
+
+    <label>Flight Number</label>
+    <input id="flight">
+
+    <label id="standLabel">Stand / Pickup Location</label>
+    <input id="stand">
+
+    <label>Date and Time</label>
+    <input type="datetime-local" id="time">
+
+    <label>Crew</label>
+    <select id="crew">
+        <option value="">Select</option>
+        <option>1</option><option>2</option><option>3</option>
+        <option>4</option><option>5</option><option>6</option>
+    </select>
+
+    <button onclick="confirmPickup()">Confirm Pickup</button>
+</div>
+
+<div class="card">
+    <h2>Active Pickups</h2>
+    <div id="dashboard"></div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// --- Firebase Config ---
 const firebaseConfig = {
-    apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
+    apiKey: "AIzaSyCC...",
     authDomain: "crew-app-e1315.firebaseapp.com",
-    projectId: "crew-app-e1315",
-    storageBucket: "crew-app-e1315.firebasestorage.app",
-    messagingSenderId: "320647227664",
-    appId: "1:320647227664:web:8de65c96c509d819a7dd95",
-    databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
+    databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const pickupsRef = ref(db, "pickups1");
+
 const dashboard = document.getElementById("dashboard");
-const alertSound = document.getElementById("alertSound");
 
-// --- Google Sheets Web App URL ---
-const SHEETS_URL = "https://script.google.com/macros/s/AKfycbxx1Vwrj2TEcVNXCany1KNr24JbLKbXViESj9wxRZ3-iHpKKxZqUpFdbyQXzAF5DfThGA/exec";
-
-// --- Helpers ---
+// Toggle stand
 window.toggleStand = function() {
-    document.getElementById("stand").style.display =
-        document.getElementById("type").value === "Inbound" ? "block" : "none";
+    const type = document.getElementById("type").value;
+    document.getElementById("stand").style.display = type === "Inbound" ? "block" : "none";
 };
 toggleStand();
 
-// ✅ FIX: convert datetime-local to correct ISO without timezone shift
-function toLocalISOString(datetimeLocalValue) {
-    const localDate = new Date(datetimeLocalValue);
-    return new Date(
-        localDate.getTime() - localDate.getTimezoneOffset() * 60000
-    ).toISOString();
-}
-
-async function sendToSheets(jobId, newJob) {
-    try {
-        await fetch(SHEETS_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: jobId, ...newJob })
-        });
-    } catch(e) {
-        console.warn("Failed to send to Google Sheets:", e);
-    }
-}
-
-// --- Confirm Pickup ---
+// Confirm pickup
 window.confirmPickup = async function() {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
@@ -58,28 +95,26 @@ window.confirmPickup = async function() {
     const crew = document.getElementById("crew").value;
 
     if (!flight || !time || !crew) {
-        alert("Enter flight, time, and crew");
+        alert("Fill all required fields");
         return;
     }
 
     if (type === "Inbound" && !stand) {
-        alert("Enter stand for inbound");
+        alert("Enter stand");
         return;
     }
 
     const newJob = {
         flightNumber: flight,
-        type: type,
-        stand: stand,
-        pickupTime: toLocalISOString(time), // ✅ FIX HERE
-        crew: crew,
+        type,
+        stand,
+        pickupTime: time, // ✅ SAFE FIX (NO ISO CONVERSION)
+        crew,
         status: "Pending",
-        createdTime: new Date().toISOString(),
-        completedTime: null
+        createdTime: Date.now()
     };
 
-    const jobRef = await push(pickupsRef, newJob);
-    await sendToSheets(jobRef.key, newJob);
+    await push(pickupsRef, newJob);
 
     document.getElementById("flight").value = "";
     document.getElementById("stand").value = "";
@@ -87,158 +122,56 @@ window.confirmPickup = async function() {
     document.getElementById("crew").value = "";
 };
 
-// --- Complete / Remove ---
-window.complete = async function(id) {
-    const updateData = {
-        status: "Completed",
-        completedTime: new Date().toISOString()
-    };
-    await update(ref(db, "pickups1/" + id), updateData);
-    await sendToSheets(id, updateData);
-};
-
-window.removePickup = async function(id) {
-    await remove(ref(db, "pickups1/" + id));
-    await sendToSheets(id, { status: "Deleted" });
-};
-
-// --- Reset alerts ---
-window.resetAlerts = function() {
-    alertSound.pause();
-    alertSound.currentTime = 0;
-
-    Array.from(document.getElementsByClassName("pickup-card")).forEach(card => {
-        card.classList.remove("blink");
-        card.dataset.alerted = "false";
+// Complete
+window.complete = function(id) {
+    update(ref(db, "pickups1/" + id), {
+        status: "Completed"
     });
 };
 
-// --- Live pickups last 24h ---
+// Delete
+window.removePickup = function(id) {
+    if (confirm("Delete this job?")) {
+        remove(ref(db, "pickups1/" + id));
+    }
+};
+
+// Render
 onValue(pickupsRef, snapshot => {
-    const pickups = [];
-    const now = new Date();
-    const DAY_MS = 24 * 60 * 60 * 1000;
-
-    snapshot.forEach(child => {
-        const data = { id: child.key, ...child.val() };
-        if (now - new Date(data.createdTime) <= DAY_MS) {
-            pickups.push(data);
-        }
-    });
-
-    pickups.sort((a, b) => {
-        const aTime = new Date(a.pickupTime);
-        const bTime = new Date(b.pickupTime);
-
-        const getPriority = (p, time) => {
-            if (p.status !== "Pending") return 4;
-            const diff = (time - now) / 60000;
-            if (diff < 0) return 0;
-            if (diff <= 10) return 1;
-            if (diff <= 30) return 2;
-            return 3;
-        };
-
-        return getPriority(a, aTime) - getPriority(b, bTime) || aTime - bTime;
-    });
-
     dashboard.innerHTML = "";
 
-    pickups.forEach(p => {
+    snapshot.forEach(child => {
+        const p = child.val();
+        const id = child.key;
+
         const card = document.createElement("div");
         card.className = "pickup-card";
-        card.dataset.pickupTime = p.pickupTime;
-        card.dataset.status = p.status;
-        card.dataset.alerted = "false";
 
         const pickupDate = new Date(p.pickupTime);
 
+        const now = new Date();
+        const diff = (pickupDate - now) / 60000;
+
+        if (diff <= 10 && diff >= 0) card.classList.add("imminent");
+        else if (diff <= 30 && diff > 10) card.classList.add("urgent");
+        else if (diff < 0) card.classList.add("late");
+
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
-            <div>${p.type}${p.stand ? " – Stand " + p.stand : ""}</div>
-            <div class="pickup-time">Pickup: ${pickupDate.toLocaleString()}</div>
+            <div>${p.type} ${p.stand ? "- " + p.stand : ""}</div>
+            <div>${pickupDate.toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
             <div class="status ${p.status==="Completed"?"completed":"pending"}">${p.status}</div>
-            <div class="countdown"></div>
+
             <div class="actions">
-                ${p.status==="Pending" ? `<button class="complete" onclick="complete('${p.id}')">Complete</button>` : ""}
-                <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
+                ${p.status==="Pending" ? `<button class="complete" onclick="complete('${id}')">Complete</button>` : ""}
+                <button class="delete" onclick="removePickup('${id}')">Delete</button>
             </div>
         `;
 
         dashboard.appendChild(card);
     });
-
-    updateCountdowns();
 });
-
-// --- Countdown ---
-function updateCountdowns() {
-    const cards = Array.from(document.getElementsByClassName("pickup-card"));
-    const now = new Date();
-
-    cards.forEach(card => {
-        const status = card.dataset.status;
-        const countdownEl = card.querySelector(".countdown");
-        const pickupTime = new Date(card.dataset.pickupTime);
-
-        if (status !== "Pending") {
-            countdownEl.textContent = "";
-            card.classList.remove("imminent", "urgent", "late", "blink");
-            return;
-        }
-
-        let diffSeconds = Math.floor((pickupTime - now) / 1000);
-
-        if (diffSeconds < 0) {
-            countdownEl.textContent = "Late!";
-            card.classList.remove("imminent", "urgent");
-            card.classList.add("late", "blink");
-
-            if (card.dataset.alerted === "false") {
-                alertSound.currentTime = 0;
-                alertSound.play().catch(()=>{});
-                card.dataset.alerted = "true";
-            }
-        } else {
-            const minutes = Math.floor(diffSeconds / 60);
-            const seconds = diffSeconds % 60;
-
-            countdownEl.textContent =
-                `Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
-
-            card.classList.remove("imminent", "urgent", "late", "blink");
-
-            if (minutes <= 10) card.classList.add("imminent");
-            else if (minutes <= 30) card.classList.add("urgent");
-
-            card.dataset.alerted = "false";
-        }
-    });
-}
-
-setInterval(updateCountdowns, 1000);
-
-// --- PWA install ---
-let deferredPrompt;
-const installButton = document.getElementById("installButton");
-
-window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installButton.style.display = "block";
-});
-
-installButton.addEventListener("click", async () => {
-    installButton.style.display = "none";
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-});
-
-// --- Service Worker ---
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-        .then(() => console.log("Service Worker registered"));
-}
 </script>
+</body>
+</html>
