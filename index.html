@@ -21,6 +21,7 @@
         .status { font-weight: bold; margin-top: 5px; }
         .pending { color: #f57c00; }
         .completed { color: #2e7d32; }
+        .collected { color: #1565c0; }
         .actions { display:flex; gap:10px; margin-top:10px; }
         .actions button { flex:1; }
         .countdown { font-weight: bold; margin-top:5px; }
@@ -76,7 +77,7 @@ const firebaseConfig = {
     apiKey: "AIzaSyCCehxMag_g2wXh7WzruvZyt9kdSJI4OpI",
     authDomain: "crew-app-e1315.firebaseapp.com",
     projectId: "crew-app-e1315",
-    storageBucket: "crew-app-e1315.firebasestorage.app",
+    storageBucket: "crew-app-e1315.firebased.app",
     messagingSenderId: "320647227664",
     appId: "1:320647227664:web:8de65c96c509d819a7dd95",
     databaseURL: "https://crew-app-e1315-default-rtdb.europe-west1.firebasedatabase.app/"
@@ -87,8 +88,8 @@ const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
 
-// --- Google Sheets Web App URL ---
-const SHEETS_URL = "https://script.google.com/macros/s/AKfycbxx1Vwrj2TEcVNXCany1KNr24JbLKbXViESj9wxRZ3-iHpKKxZqUpFdbyQXzAF5DfThGA/exec"; // <-- Replace this
+// --- Google Sheets URL ---
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbxx1Vwrj2TEcVNXCany1KNr24JbLKbXViESj9wxRZ3-iHpKKxZqUpFdbyQXzAF5DfThGA/exec";
 
 // --- Helpers ---
 window.toggleStand = function() {
@@ -124,6 +125,7 @@ window.confirmPickup = async function() {
         crew: crew,
         status: "Pending",
         createdTime: new Date().toISOString(),
+        collectedTime: null,
         completedTime: null
     };
 
@@ -136,12 +138,29 @@ window.confirmPickup = async function() {
     document.getElementById("crew").value = "";
 };
 
-// --- Complete / Remove ---
+// --- Collected / Complete / Remove ---
+window.collected = async function(id) {
+    const updateData = { status: "Collected", collectedTime: new Date().toISOString() };
+    await update(ref(db, "pickups1/" + id), updateData);
+    await sendToSheets(id, updateData);
+};
+
 window.complete = async function(id) {
+    const snapshot = await new Promise(resolve => {
+        onValue(ref(db, "pickups1/" + id), resolve, { onlyOnce: true });
+    });
+
+    const job = snapshot.val();
+    if (!job || job.status !== "Collected") {
+        alert("You must mark this job as COLLECTED first");
+        return;
+    }
+
     const updateData = { status: "Completed", completedTime: new Date().toISOString() };
     await update(ref(db, "pickups1/" + id), updateData);
     await sendToSheets(id, updateData);
 };
+
 window.removePickup = async function(id) {
     await remove(ref(db, "pickups1/" + id));
     await sendToSheets(id, { status: "Deleted" });
@@ -183,19 +202,55 @@ onValue(pickupsRef, snapshot => {
     pickups.forEach(p => {
         const card=document.createElement("div"); card.className="pickup-card";
         card.dataset.pickupTime=p.pickupTime; card.dataset.status=p.status; card.dataset.alerted="false";
+
         const pickupDate = new Date(p.pickupTime);
+        const collectedDate = p.collectedTime ? new Date(p.collectedTime) : null;
+        const completedDate = p.completedTime ? new Date(p.completedTime) : null;
+
+        let delayText = "";
+        if(!completedDate && collectedDate){
+            const diffMin = Math.floor((new Date() - pickupDate)/60000);
+            if(diffMin > 0) delayText = `Delay: +${diffMin} min`;
+        } else if(!completedDate && !collectedDate){
+            const diffMin = Math.floor((new Date() - pickupDate)/60000);
+            if(diffMin > 0) delayText = `Late: +${diffMin} min`;
+        }
+
+        let completionText = "";
+        if(collectedDate && completedDate){
+            const diffMin = Math.floor((completedDate - collectedDate)/60000);
+            completionText = `Completed in ${diffMin} min`;
+        }
+
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
             <div>${p.type}${p.stand ? " – Stand "+p.stand : ""}</div>
             <div class="pickup-time">Pickup: ${pickupDate.toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
-            <div class="status ${p.status==="Completed"?"completed":"pending"}">${p.status}</div>
+
+            <div class="status ${
+                p.status==="Completed" ? "completed" :
+                p.status==="Collected" ? "collected" :
+                "pending"
+            }">${p.status}</div>
+
+            ${collectedDate ? `<div>Collected at: ${collectedDate.toLocaleTimeString()}</div>` : ""}
+            ${completedDate ? `<div>Completed at: ${completedDate.toLocaleTimeString()}</div>` : ""}
+            ${delayText ? `<div>${delayText}</div>` : ""}
+            ${completionText ? `<div>${completionText}</div>` : ""}
+
             <div class="countdown"></div>
+
             <div class="actions">
-                ${p.status==="Pending"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:""}
-                <button class="delete" onclick="removePickup('${p.id}')">Delete</button>
+                ${
+                    p.status==="Pending" ? `<button onclick="collected('${p.id}')">Collected</button>` :
+                    p.status==="Collected" ? `<button class="complete" onclick="complete('${p.id}')">Complete</button>` : ""
+                }
+
+                <button class="delete" onclick="removePickup('${p.id}')">Delete Job (no show)</button>
             </div>
         `;
+
         dashboard.appendChild(card);
     });
     updateCountdowns();
@@ -235,6 +290,7 @@ installButton.addEventListener("click", async()=>{ installButton.style.display="
 
 // --- Service Worker ---
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('service-worker.js').then(()=>console.log("Service Worker registered")); }
+
 </script>
 </body>
 </html>
