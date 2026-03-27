@@ -166,7 +166,7 @@ window.resetAlerts = function() {
 onValue(pickupsRef, snapshot => {
     const pickups = [];
     const now = new Date();
-    const DAY_MS = 24*60*60*1000;
+    const DAY_MS = 2*60*60*1000;
 
     snapshot.forEach(child => {
         const data = { id: child.key, ...child.val() };
