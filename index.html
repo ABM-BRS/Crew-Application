@@ -107,21 +107,34 @@ async function sendToSheets(jobId, newJob) {
     } catch(e) { console.warn("Failed to send to Google Sheets:", e); }
 }
 
-// --- Confirm Pickup ---
+// --- Confirm Pickup (robust) ---
 window.confirmPickup = async function() {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
     const stand = document.getElementById("stand").value.trim();
-    const time = document.getElementById("time").value;
+    const timeInput = document.getElementById("time").value;
     const crew = document.getElementById("crew").value;
-    if (!flight || !time || !crew) { alert("Enter flight, time, and crew"); return; }
-    if (type === "Inbound" && !stand) { alert("Enter stand for inbound"); return; }
+
+    if (!flight || !timeInput || !crew) { 
+        alert("Enter flight, time, and crew"); 
+        return; 
+    }
+    if (type === "Inbound" && !stand) { 
+        alert("Enter stand for inbound"); 
+        return; 
+    }
+
+    const pickupTime = new Date(timeInput);
+    if (isNaN(pickupTime)) {
+        alert("Invalid date/time");
+        return;
+    }
 
     const newJob = {
         flightNumber: flight,
         type: type,
         stand: stand,
-        pickupTime: new Date(time).toISOString(),
+        pickupTime: pickupTime.toISOString(),
         crew: crew,
         status: "Pending",
         createdTime: new Date().toISOString(),
@@ -129,8 +142,14 @@ window.confirmPickup = async function() {
         collectedTime: null
     };
 
-    const jobRef = await push(pickupsRef, newJob);
-    await sendToSheets(jobRef.key, newJob);
+    try {
+        const jobRef = await push(pickupsRef, newJob);
+        await sendToSheets(jobRef.key, newJob);
+    } catch (err) {
+        console.error("Failed to add pickup:", err);
+        alert("Error adding pickup, see console");
+        return;
+    }
 
     document.getElementById("flight").value = "";
     document.getElementById("stand").value = "";
@@ -171,20 +190,14 @@ onValue(pickupsRef, snapshot => {
 
     snapshot.forEach(child => {
         const data = { id: child.key, ...child.val() };
-
-        // Ensure createdTime exists and is valid
-        if(!data.createdTime) {
-            pickups.push(data);
-            return;
-        }
-
         const createdTime = new Date(data.createdTime);
-        if(isNaN(createdTime)) {
+
+        if(!data.createdTime || isNaN(createdTime)) {
+            console.warn(`Job ${child.key} has invalid createdTime, keeping it`);
             pickups.push(data);
             return;
         }
 
-        // Remove jobs older than 4 hours
         if(now.getTime() - createdTime.getTime() > FOUR_HOURS_MS) {
             remove(ref(db, "pickups1/" + child.key)).catch(err => console.warn("Failed to remove old job:", err));
             return;
@@ -193,11 +206,11 @@ onValue(pickupsRef, snapshot => {
         pickups.push(data);
     });
 
-    // Sort jobs for display
     pickups.sort((a,b) => {
         const aTime = new Date(a.pickupTime), bTime = new Date(b.pickupTime);
         const getPriority = (p,time) => {
             if(p.status!=="Pending") return 4;
+            if(isNaN(time)) return 4;
             const diff=(time-now)/60000;
             if(diff<0) return 0;
             if(diff<=10) return 1;
@@ -213,16 +226,15 @@ onValue(pickupsRef, snapshot => {
 
         const card=document.createElement("div"); 
         card.className="pickup-card";
-        card.dataset.pickupTime=p.pickupTime; 
-        card.dataset.status=p.status; 
+        card.dataset.pickupTime=p.pickupTime;
+        card.dataset.status=p.status;
         card.dataset.alerted="false";
 
         const pickupDate = new Date(p.pickupTime);
-
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
             <div>${p.type}${p.stand ? " – Stand "+p.stand : ""}</div>
-            <div class="pickup-time">Pickup: ${pickupDate.toLocaleString()}</div>
+            <div class="pickup-time">Pickup: ${isNaN(pickupDate) ? "Invalid date" : pickupDate.toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
             <div class="status ${p.status==="Collected"?"collected":"pending"}">${p.status}</div>
             <div class="countdown"></div>
@@ -238,18 +250,23 @@ onValue(pickupsRef, snapshot => {
     updateCountdowns();
 });
 
-// --- Countdown ---
+// --- Countdown (robust) ---
 function updateCountdowns() {
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     const now = new Date();
 
     cards.forEach(card => {
-        if(!card.dataset.pickupTime || !card.dataset.status) return;
-
         const status = card.dataset.status;
         const countdownEl = card.querySelector(".countdown");
-        const pickupTime = new Date(card.dataset.pickupTime);
-        if(isNaN(pickupTime)) return;
+        const pickupTimeStr = card.dataset.pickupTime;
+        const pickupTime = new Date(pickupTimeStr);
+
+        if(!pickupTimeStr || isNaN(pickupTime)) {
+            countdownEl.textContent = "Invalid pickup time";
+            card.classList.remove("imminent","urgent","late","blink");
+            card.dataset.alerted="false";
+            return;
+        }
 
         if(status !== "Pending") {
             countdownEl.textContent = "";
@@ -263,21 +280,19 @@ function updateCountdowns() {
             countdownEl.textContent = "Late!";
             card.classList.remove("imminent","urgent");
             card.classList.add("late","blink");
-
-            if(card.dataset.alerted === "false") {
+            if(card.dataset.alerted === "false") { 
                 try { alertSound.play(); } catch(e) { console.warn("Alert sound failed:", e); }
-                card.dataset.alerted = "true";
+                card.dataset.alerted="true";
             }
         } else {
             const minutes = Math.floor(diffSeconds / 60);
             const seconds = diffSeconds % 60;
             countdownEl.textContent = `Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
-            card.classList.remove("imminent","urgent","late","blink");
 
+            card.classList.remove("imminent","urgent","late","blink");
             if(minutes <= 10) card.classList.add("imminent");
             else if(minutes <= 30) card.classList.add("urgent");
-
-            card.dataset.alerted = "false";
+            card.dataset.alerted="false";
         }
     });
 }
