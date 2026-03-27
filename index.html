@@ -61,7 +61,7 @@
 </div>
 
 <div class="card">
-    <h2>Active Pickups (Last 24h)</h2>
+    <h2>Active Pickups (Last 4 Hours)</h2>
     <button style="background:#ff9800; margin-bottom:10px;" onclick="resetAlerts()">Reset Alerts</button>
     <div id="dashboard"></div>
 </div>
@@ -162,17 +162,27 @@ window.resetAlerts = function() {
     });
 };
 
-// --- Live pickups last 24h ---
+// --- Live pickups with 4-hour auto-delete ---
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+
 onValue(pickupsRef, snapshot => {
     const pickups = [];
     const now = new Date();
-    const DAY_MS = 12*60*60*1000;
 
     snapshot.forEach(child => {
         const data = { id: child.key, ...child.val() };
-        if(now - new Date(data.createdTime) <= DAY_MS) pickups.push(data);
+        const createdTime = new Date(data.createdTime);
+
+        // Automatically delete jobs older than 4 hours
+        if(now - createdTime > FOUR_HOURS_MS) {
+            remove(ref(db, "pickups1/" + child.key)).catch(err => console.warn("Failed to remove old job:", err));
+            return; // Skip this job
+        }
+
+        pickups.push(data);
     });
 
+    // Sort jobs for display
     pickups.sort((a,b) => {
         const aTime = new Date(a.pickupTime), bTime = new Date(b.pickupTime);
         const getPriority = (p,time) => {
@@ -186,9 +196,10 @@ onValue(pickupsRef, snapshot => {
         return getPriority(a,aTime)-getPriority(b,bTime) || aTime-bTime;
     });
 
+    // Display dashboard
     dashboard.innerHTML = "";
     pickups.forEach(p => {
-        if(p.status === "Completed") return; // <-- skip completed jobs in live dashboard
+        if(p.status === "Completed") return;
 
         const card=document.createElement("div"); 
         card.className="pickup-card";
@@ -203,46 +214,60 @@ onValue(pickupsRef, snapshot => {
             <div>${p.type}${p.stand ? " – Stand "+p.stand : ""}</div>
             <div class="pickup-time">Pickup: ${pickupDate.toLocaleString()}</div>
             <div>Crew: ${p.crew}</div>
-            <div class="status ${
-                p.status==="Collected"?"collected":"pending"
-            }">${p.status}</div>
+            <div class="status ${p.status==="Collected"?"collected":"pending"}">${p.status}</div>
             <div class="countdown"></div>
             <div class="actions">
-                ${
-                    p.status==="Pending"?`<button onclick="collected('${p.id}')">Collected</button>`:""
-                }
-                ${
-                    p.status==="Collected"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:""
-                }
+                ${p.status==="Pending"?`<button onclick="collected('${p.id}')">Collected</button>`:""}
+                ${p.status==="Collected"?`<button class="complete" onclick="complete('${p.id}')">Complete</button>`:""}
                 <button class="delete" onclick="removePickup('${p.id}')">Delete Job (no show)</button>
             </div>
         `;
         dashboard.appendChild(card);
     });
+
     updateCountdowns();
 });
 
-// --- Countdown ---
+// --- Countdown logic (robust for deleted jobs) ---
 function updateCountdowns() {
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     const now = new Date();
+
     cards.forEach(card => {
+        if(!card.dataset.pickupTime || !card.dataset.status) return;
+
         const status = card.dataset.status;
         const countdownEl = card.querySelector(".countdown");
         const pickupTime = new Date(card.dataset.pickupTime);
-        if(status!=="Pending"){ countdownEl.textContent=""; card.classList.remove("imminent","urgent","late","blink"); return; }
-        let diffSeconds = Math.floor((pickupTime-now)/1000);
-        if(diffSeconds<0){
-            countdownEl.textContent="Late!";
-            card.classList.remove("imminent","urgent"); card.classList.add("late","blink");
-            if(card.dataset.alerted==="false"){ alertSound.play(); card.dataset.alerted="true"; }
-        } else {
-            const minutes=Math.floor(diffSeconds/60), seconds=diffSeconds%60;
-            countdownEl.textContent=`Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
+        if(isNaN(pickupTime)) return;
+
+        if(status !== "Pending") {
+            countdownEl.textContent = "";
             card.classList.remove("imminent","urgent","late","blink");
-            if(minutes<=10) card.classList.add("imminent");
-            else if(minutes<=30) card.classList.add("urgent");
-            card.dataset.alerted="false";
+            return;
+        }
+
+        const diffSeconds = Math.floor((pickupTime - now)/1000);
+
+        if(diffSeconds < 0) {
+            countdownEl.textContent = "Late!";
+            card.classList.remove("imminent","urgent");
+            card.classList.add("late","blink");
+
+            if(card.dataset.alerted === "false") {
+                try { alertSound.play(); } catch(e) { console.warn("Alert sound failed:", e); }
+                card.dataset.alerted = "true";
+            }
+        } else {
+            const minutes = Math.floor(diffSeconds / 60);
+            const seconds = diffSeconds % 60;
+            countdownEl.textContent = `Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
+            card.classList.remove("imminent","urgent","late","blink");
+
+            if(minutes <= 10) card.classList.add("imminent");
+            else if(minutes <= 30) card.classList.add("urgent");
+
+            card.dataset.alerted = "false";
         }
     });
 }
