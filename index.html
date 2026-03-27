@@ -71,6 +71,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getDatabase, ref, push, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 // --- Firebase Config ---
 const firebaseConfig = {
@@ -87,6 +88,12 @@ const db = getDatabase(app);
 const pickupsRef = ref(db, "pickups1");
 const dashboard = document.getElementById("dashboard");
 const alertSound = document.getElementById("alertSound");
+
+// --- Anonymous Auth ---
+const auth = getAuth();
+signInAnonymously(auth)
+    .then(() => console.log("Signed in anonymously"))
+    .catch(err => console.error("Anonymous auth failed:", err));
 
 // --- Google Sheets Web App URL ---
 const SHEETS_URL = "https://script.google.com/macros/s/AKfycbxx1Vwrj2TEcVNXCany1KNr24JbLKbXViESj9wxRZ3-iHpKKxZqUpFdbyQXzAF5DfThGA/exec";
@@ -107,7 +114,7 @@ async function sendToSheets(jobId, newJob) {
     } catch(e) { console.warn("Failed to send to Google Sheets:", e); }
 }
 
-// --- Confirm Pickup (robust) ---
+// --- Confirm Pickup ---
 window.confirmPickup = async function() {
     const flight = document.getElementById("flight").value.trim();
     const type = document.getElementById("type").value;
@@ -125,10 +132,7 @@ window.confirmPickup = async function() {
     }
 
     const pickupTime = new Date(timeInput);
-    if (isNaN(pickupTime)) {
-        alert("Invalid date/time");
-        return;
-    }
+    if (isNaN(pickupTime)) { alert("Invalid date/time"); return; }
 
     const newJob = {
         flightNumber: flight,
@@ -148,9 +152,9 @@ window.confirmPickup = async function() {
     } catch (err) {
         console.error("Failed to add pickup:", err);
         alert("Error adding pickup, see console");
-        return;
     }
 
+    // Clear form
     document.getElementById("flight").value = "";
     document.getElementById("stand").value = "";
     document.getElementById("time").value = "";
@@ -158,22 +162,22 @@ window.confirmPickup = async function() {
 };
 
 // --- Collected / Complete / Remove ---
-window.collected = async function(id){
+window.collected = async id => {
     const updateData = { status: "Collected", collectedTime: new Date().toISOString() };
     await update(ref(db, "pickups1/" + id), updateData);
     await sendToSheets(id, updateData);
 };
-window.complete = async function(id) {
+window.complete = async id => {
     const updateData = { status: "Completed", completedTime: new Date().toISOString() };
     await update(ref(db, "pickups1/" + id), updateData);
     await sendToSheets(id, updateData);
 };
-window.removePickup = async function(id) {
+window.removePickup = async id => {
     await remove(ref(db, "pickups1/" + id));
     await sendToSheets(id, { status: "Deleted" });
 };
 
-// --- Reset alerts ---
+// --- Reset Alerts ---
 window.resetAlerts = function() {
     alertSound.pause(); alertSound.currentTime=0;
     Array.from(document.getElementsByClassName("pickup-card")).forEach(card => {
@@ -181,9 +185,8 @@ window.resetAlerts = function() {
     });
 };
 
-// --- Live pickups with 4-hour auto-delete ---
-const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-
+// --- Live pickups ---
+const FOUR_HOURS_MS = 4*60*60*1000;
 onValue(pickupsRef, snapshot => {
     const pickups = [];
     const now = new Date();
@@ -191,25 +194,22 @@ onValue(pickupsRef, snapshot => {
     snapshot.forEach(child => {
         const data = { id: child.key, ...child.val() };
         const createdTime = new Date(data.createdTime);
-
-        if(!data.createdTime || isNaN(createdTime)) {
+        if (!data.createdTime || isNaN(createdTime)) {
             console.warn(`Job ${child.key} has invalid createdTime, keeping it`);
             pickups.push(data);
             return;
         }
-
-        if(now.getTime() - createdTime.getTime() > FOUR_HOURS_MS) {
+        if (now - createdTime > FOUR_HOURS_MS) {
             remove(ref(db, "pickups1/" + child.key)).catch(err => console.warn("Failed to remove old job:", err));
             return;
         }
-
         pickups.push(data);
     });
 
     pickups.sort((a,b) => {
         const aTime = new Date(a.pickupTime), bTime = new Date(b.pickupTime);
         const getPriority = (p,time) => {
-            if(p.status!=="Pending") return 4;
+            if(p.status !== "Pending") return 4;
             if(isNaN(time)) return 4;
             const diff=(time-now)/60000;
             if(diff<0) return 0;
@@ -222,14 +222,12 @@ onValue(pickupsRef, snapshot => {
 
     dashboard.innerHTML = "";
     pickups.forEach(p => {
-        if(p.status === "Completed") return;
-
-        const card=document.createElement("div"); 
+        if(p.status==="Completed") return;
+        const card = document.createElement("div");
         card.className="pickup-card";
-        card.dataset.pickupTime=p.pickupTime;
-        card.dataset.status=p.status;
+        card.dataset.pickupTime = p.pickupTime;
+        card.dataset.status = p.status;
         card.dataset.alerted="false";
-
         const pickupDate = new Date(p.pickupTime);
         card.innerHTML = `
             <div class="pickup-header">${p.flightNumber}</div>
@@ -250,7 +248,7 @@ onValue(pickupsRef, snapshot => {
     updateCountdowns();
 });
 
-// --- Countdown (robust) ---
+// --- Countdown ---
 function updateCountdowns() {
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     const now = new Date();
@@ -258,40 +256,36 @@ function updateCountdowns() {
     cards.forEach(card => {
         const status = card.dataset.status;
         const countdownEl = card.querySelector(".countdown");
-        const pickupTimeStr = card.dataset.pickupTime;
-        const pickupTime = new Date(pickupTimeStr);
+        const pickupTime = new Date(card.dataset.pickupTime);
 
-        if(!pickupTimeStr || isNaN(pickupTime)) {
+        if(!card.dataset.pickupTime || isNaN(pickupTime)) {
             countdownEl.textContent = "Invalid pickup time";
             card.classList.remove("imminent","urgent","late","blink");
             card.dataset.alerted="false";
             return;
         }
 
-        if(status !== "Pending") {
+        if(status!=="Pending") {
             countdownEl.textContent = "";
             card.classList.remove("imminent","urgent","late","blink");
             return;
         }
 
         const diffSeconds = Math.floor((pickupTime - now)/1000);
-
-        if(diffSeconds < 0) {
-            countdownEl.textContent = "Late!";
+        if(diffSeconds<0){
+            countdownEl.textContent="Late!";
             card.classList.remove("imminent","urgent");
             card.classList.add("late","blink");
-            if(card.dataset.alerted === "false") { 
-                try { alertSound.play(); } catch(e) { console.warn("Alert sound failed:", e); }
+            if(card.dataset.alerted==="false"){
+                try{ alertSound.play(); }catch(e){ console.warn("Alert sound failed:", e);}
                 card.dataset.alerted="true";
             }
         } else {
-            const minutes = Math.floor(diffSeconds / 60);
-            const seconds = diffSeconds % 60;
-            countdownEl.textContent = `Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
-
+            const minutes=Math.floor(diffSeconds/60), seconds=diffSeconds%60;
+            countdownEl.textContent=`Time left: ${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')} min`;
             card.classList.remove("imminent","urgent","late","blink");
-            if(minutes <= 10) card.classList.add("imminent");
-            else if(minutes <= 30) card.classList.add("urgent");
+            if(minutes<=10) card.classList.add("imminent");
+            else if(minutes<=30) card.classList.add("urgent");
             card.dataset.alerted="false";
         }
     });
