@@ -171,12 +171,23 @@ onValue(pickupsRef, snapshot => {
 
     snapshot.forEach(child => {
         const data = { id: child.key, ...child.val() };
-        const createdTime = new Date(data.createdTime);
 
-        // Automatically delete jobs older than 4 hours
-        if(now - createdTime > FOUR_HOURS_MS) {
+        // Ensure createdTime exists and is valid
+        if(!data.createdTime) {
+            pickups.push(data);
+            return;
+        }
+
+        const createdTime = new Date(data.createdTime);
+        if(isNaN(createdTime)) {
+            pickups.push(data);
+            return;
+        }
+
+        // Remove jobs older than 4 hours
+        if(now.getTime() - createdTime.getTime() > FOUR_HOURS_MS) {
             remove(ref(db, "pickups1/" + child.key)).catch(err => console.warn("Failed to remove old job:", err));
-            return; // Skip this job
+            return;
         }
 
         pickups.push(data);
@@ -196,7 +207,6 @@ onValue(pickupsRef, snapshot => {
         return getPriority(a,aTime)-getPriority(b,bTime) || aTime-bTime;
     });
 
-    // Display dashboard
     dashboard.innerHTML = "";
     pickups.forEach(p => {
         if(p.status === "Completed") return;
@@ -228,7 +238,7 @@ onValue(pickupsRef, snapshot => {
     updateCountdowns();
 });
 
-// --- Countdown logic (robust for deleted jobs) ---
+// --- Countdown ---
 function updateCountdowns() {
     const cards = Array.from(document.getElementsByClassName("pickup-card"));
     const now = new Date();
